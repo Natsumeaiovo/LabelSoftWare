@@ -1,0 +1,8 @@
+<RCC>
+  <qresource prefix="标题栏控件">
+    <file>用户.png</file>
+    <file>最小化.png</file>
+    <file>最大化.png</file>
+    <file>退出.png</file>
+  </qresource>
+</RCC>

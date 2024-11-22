@@ -1,0 +1,10 @@
+*.rar
+*.dcm
+*.tif
+*.tiff
+*.png
+*.jpg
+/image/dcm/
+*.exe
+/dist/
+/build/

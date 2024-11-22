@@ -1,0 +1,97 @@
+{
+    "1.dcm": {
+        "window_width": 11829,
+        "window_level": 37144,
+        "reverse_checked": true
+    },
+    "2.dcm": {
+        "window_width": 3076,
+        "window_level": 7807,
+        "reverse_checked": false
+    },
+    "10.dcm": {
+        "window_width": 11356,
+        "window_level": 42349,
+        "reverse_checked": true
+    },
+    "3.dcm": {
+        "window_width": 4495,
+        "window_level": 8044,
+        "reverse_checked": false
+    },
+    "6.dcm": {
+        "window_width": 11356,
+        "window_level": 52286,
+        "reverse_checked": true
+    },
+    "16.dcm": {
+        "window_width": 8281,
+        "window_level": 57372,
+        "reverse_checked": true
+    },
+    "8.dcm": {
+        "window_width": 9937,
+        "window_level": 36435,
+        "reverse_checked": true
+    },
+    "4.dcm": {
+        "window_width": 10410,
+        "window_level": 12066,
+        "reverse_checked": false
+    },
+    "5.dcm": {
+        "window_width": 6861,
+        "window_level": 38327,
+        "reverse_checked": true
+    },
+    "7.dcm": {
+        "window_width": 11356,
+        "window_level": 37618,
+        "reverse_checked": true
+    },
+    "13.dcm": {
+        "window_width": 10173,
+        "window_level": 37144,
+        "reverse_checked": true
+    },
+    "9.dcm": {
+        "window_width": 9700,
+        "window_level": 36435,
+        "reverse_checked": true
+    },
+    "11.dcm": {
+        "window_width": 7334,
+        "window_level": 40102,
+        "reverse_checked": true
+    },
+    "12.dcm": {
+        "window_width": 10646,
+        "window_level": 41166,
+        "reverse_checked": true
+    },
+    "15.dcm": {
+        "window_width": 28640,
+        "window_level": 14320,
+        "reverse_checked": false
+    },
+    "14.dcm": {
+        "window_width": 9463,
+        "window_level": 22239,
+        "reverse_checked": false
+    },
+    "19.dcm": {
+        "window_width": 28343,
+        "window_level": 51363,
+        "reverse_checked": true
+    },
+    "18.dcm": {
+        "window_width": 28611,
+        "window_level": 51576,
+        "reverse_checked": true
+    },
+    "17.dcm": {
+        "window_width": 7806,
+        "window_level": 39983,
+        "reverse_checked": true
+    }
+}
