@@ -168,7 +168,8 @@ class IMG_WIN(QWidget):
                     y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
                     x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
                     y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
-                    self.current_rect = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)), self)
+                    self.current_rect = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)), self,
+                                                       label=label)
                     self.scene.addItem(self.current_rect)
 
                     self.current_rect.label = label
@@ -181,10 +182,12 @@ class IMG_WIN(QWidget):
             pass
 
     def scene_MousePressEvent(self, event):
-        if event.modifiers() & QtCore.Qt.ControlModifier and event.buttons() & QtCore.Qt.LeftButton:
+        # if event.modifiers() & QtCore.Qt.ControlModifier and event.buttons() & QtCore.Qt.LeftButton:
+        if event.buttons() & QtCore.Qt.LeftButton:
             self.preMousePosition = event.scenePos()  # 获取鼠标当前位置
 
-        if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
+        # if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
+        if event.button() == Qt.RightButton:
             item = self.graphicsView.itemAt(event.scenePos().toPoint())
             if isinstance(item, CustomRectItem):
                 cursor_shape = item.get_cursor_shape(event.scenePos())
@@ -205,7 +208,8 @@ class IMG_WIN(QWidget):
             self.scene.addItem(self.current_rect)
 
     def scene_mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        # if event.button() == Qt.LeftButton:
+        if event.button() == Qt.RightButton:
             if self.drawing:
                 # 如果鼠标释放位置与点击位置相同，那么不添加方框，直接返回
                 if self.start_pos == event.scenePos():
@@ -248,13 +252,15 @@ class IMG_WIN(QWidget):
         else:
             self.graphicsView.setCursor(Qt.ArrowCursor)
 
-        if Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
+        # if Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
+        if Qt.RightButton:
             if self.drawing and self.current_rect:
                 current_pos = event.scenePos()
                 rect = QRectF(self.start_pos, current_pos).normalized()
                 self.current_rect.setRect(rect)
 
-        if event.modifiers() & QtCore.Qt.ControlModifier and event.buttons() & QtCore.Qt.LeftButton:
+        # if event.modifiers() & QtCore.Qt.ControlModifier and event.buttons() & QtCore.Qt.LeftButton:
+        if event.buttons() & QtCore.Qt.LeftButton:
             # print("左键移动")  # 响应测试语句
             self.MouseMove = event.scenePos() - self.preMousePosition  # 鼠标当前位置-先前位置=单次偏移量
             self.preMousePosition = event.scenePos()  # 更新当前鼠标在窗口上的位置，下次移动用
@@ -618,6 +624,21 @@ class CustomRectItem(QGraphicsRectItem):
         self.comment = comment
         self.radio_start = radio_start
 
+        # 启用实时几何变化通知
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+
+    # 重写paint方法，添加缺陷标签label信息
+    def paint(self, painter, option, widget):
+        super().paint(painter, option, widget)
+        print("============paint============")
+        painter.setPen(QPen(Qt.red))
+        font = painter.font()
+        font.setFamily("Microsoft YaHei")
+        font.setPointSize(12)
+        painter.setFont(font)
+        text_position = self.rect().topLeft() + QPointF(0, -7)  # Adjust the offset as needed
+        painter.drawText(text_position, self.label)
+
     def hoverMoveEvent(self, event):
         cursor = self.get_cursor_shape(event.pos())
         self.setCursor(cursor)
@@ -698,9 +719,13 @@ class CustomRectItem(QGraphicsRectItem):
 
     # 如果方框item的变化属于位置变化，那么更新方框信息
     def itemChange(self, change, value):
-        if change in (QGraphicsItem.ItemPositionChange, QGraphicsItem.ItemPositionHasChanged,
-                      QGraphicsItem.ItemTransformChange, QGraphicsItem.ItemTransformHasChanged):
-            self.update_info(False)
+        # 实时响应位置/变换变化
+        if change in (QGraphicsItem.ItemPositionChange,  # 位置即将改变
+                      QGraphicsItem.ItemTransformChange,  # 变换即将改变
+                      QGraphicsItem.ItemPositionHasChanged,  # 位置已改变（确保全覆盖）
+                      QGraphicsItem.ItemTransformHasChanged):  # 变换已改变
+            self.update_info(True)  # 传递实时更新标志
+            self.scene().update()  # 强制场景立即更新
         return super().itemChange(change, value)
 
     # 更新方框信息

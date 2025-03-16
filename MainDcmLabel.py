@@ -31,6 +31,9 @@ from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
 
 
+import json
+import os
+
 # 保存图片临时信息（窗宽、窗位、是否反色）
 def save_img_tmp_info(image_path, window_width, window_level, reverse_checked):
     # 获取图片所在目录
@@ -39,25 +42,22 @@ def save_img_tmp_info(image_path, window_width, window_level, reverse_checked):
     info_dir = os.path.join('./img_info', os.path.basename(image_dir))
     os.makedirs(info_dir, exist_ok=True)
     # 信息文件路径
-    info_file = os.path.join(info_dir, 'temp_info.json')
-
-    # 读取现有信息
-    if os.path.exists(info_file):
-        with open(info_file, 'r') as f:
-            info_data = json.load(f)
-    else:
-        info_data = {}
+    info_file = os.path.join(info_dir, os.path.basename(image_path) + '.json')
+    temp_info_file = os.path.join(info_dir, os.path.basename(image_path) + '.json.tmp')
 
     # 更新信息
-    info_data[os.path.basename(image_path)] = {
+    info_data = {
         'window_width': window_width,
         'window_level': window_level,
         'reverse_checked': reverse_checked
     }
 
-    # 保存信息
-    with open(info_file, 'w') as f:
+    # 保存信息到临时文件
+    with open(temp_info_file, 'w') as f:
         json.dump(info_data, f, indent=4)
+
+    # 将临时文件重命名为目标文件
+    os.replace(temp_info_file, info_file)
 
 
 # 读取图片临时信息（窗宽、窗位、是否反色）
@@ -65,13 +65,93 @@ def load_img_tmp_info(image_name):
     # 获取图片所在目录
     image_dir = os.path.dirname(image_name)
     # 信息文件路径
-    info_file = os.path.join('./img_info', os.path.basename(image_dir), 'temp_info.json')
+    info_file = os.path.join('./img_info', os.path.basename(image_dir), os.path.basename(image_name) + '.json')
 
     if os.path.exists(info_file):
         with open(info_file, 'r') as f:
             info_data = json.load(f)
-        return info_data.get(os.path.basename(image_name), None)
+        return info_data
     return None
+
+
+def guided_filter(I, p, radius=16, eps=0.01):
+    # 转换输入格式
+    I = np.float32(I)
+    p = np.float32(p)
+
+    # 计算局部统计量
+    mean_I = cv2.boxFilter(I, cv2.CV_32F, (radius, radius))
+    mean_p = cv2.boxFilter(p, cv2.CV_32F, (radius, radius))
+    corr_I = cv2.boxFilter(I * I, cv2.CV_32F, (radius, radius))
+    corr_Ip = cv2.boxFilter(I * p, cv2.CV_32F, (radius, radius))
+
+    # 计算方差和协方差
+    var_I = corr_I - mean_I * mean_I
+    cov_Ip = corr_Ip - mean_I * mean_p
+
+    # 计算线性系数
+    a = cov_Ip / (var_I + eps)
+    b = mean_p - a * mean_I
+
+    # 平均系数
+    mean_a = cv2.boxFilter(a, cv2.CV_32F, (radius, radius))
+    mean_b = cv2.boxFilter(b, cv2.CV_32F, (radius, radius))
+
+    # 生成基础层
+    base_layer = mean_a * I + mean_b
+
+    return base_layer
+
+
+def rawimg_enhance(ds):
+    raw_img = ds.pixel_array.astype(np.float64)
+
+    # 1 对数处理（Retinex分解）
+    # 添加epsilon防止log(0)
+    epsilon = 1e-6
+    s_log = np.log(raw_img + epsilon)  # 公式(2)-(4)
+
+    # 2 归一化到[-1,1]范围
+    # 计算当前对数图像的范围
+    s_log_min = np.min(s_log)
+    s_log_max = np.max(s_log)
+    # 线性映射到[-1,1]
+    s_log_1 = 2 * (s_log - s_log_min) / (s_log_max - s_log_min) - 1  # 专利中的归一化步骤
+
+    # 3 导向滤波获取基础层
+    base_log = guided_filter(s_log_1, s_log_1, radius=16, eps=0.01)
+    # 映射回原始对数域
+    base_ys_log = (base_log + 1) * (s_log_max - s_log_min) / 2 + s_log_min
+
+    # 4 动态范围映射与细节处理，计算细节层（公式(6)）
+    detail_log = s_log - base_ys_log
+
+    # 5 系数分配与合成（公式7-8）
+    alpha = 0.5
+    beta = 2.0
+    enhanced_base = alpha * base_ys_log  # 基础层动态范围压缩
+    enhanced_detail = beta * detail_log  # 细节层增强
+    enhanced_log = enhanced_base + enhanced_detail
+
+    # 6 结果输出（公式9）
+    # 指数变换恢复线性域
+    enhanced_linear = np.exp(enhanced_log)
+
+    # 恢复原始数值范围
+    original_min = np.min(raw_img)
+    original_max = np.max(raw_img)
+    enhanced_norm = (enhanced_linear - np.min(enhanced_linear)) / \
+                    (np.max(enhanced_linear) - np.min(enhanced_linear)) * \
+                    (original_max - original_min) + original_min
+
+    # DICOM格式兼容处理
+    if ds.PixelRepresentation == 0:  # 无符号整型
+        enhanced_img = np.clip(enhanced_norm, 0, 2 ** ds.BitsStored - 1)
+        output_img = enhanced_img.astype(ds.pixel_array.dtype)
+    else:  # 有符号整型（如CT值）
+        enhanced_img = np.clip(enhanced_norm, -2 ** (ds.BitsStored - 1), 2 ** (ds.BitsStored - 1) - 1)
+        output_img = enhanced_img.astype(ds.pixel_array.dtype)
+    return output_img
 
 
 # 定义 Worker 类
@@ -107,6 +187,8 @@ class GUI(QMainWindow):
         self.img_enhance = None
         self.filePath = ""
         self.ongoing = False
+        self.window_left = 0
+        self.window_right = 65535
 
         # self.graphics_view_layout = QVBoxLayout(self.ui.graphicsView)
         self.img_win: IMG_WIN = ShowImage.IMG_WIN(self.ui.graphicsView, self.ui.listWidget_label)  # 实例化IMG_WIN类
@@ -178,6 +260,7 @@ class GUI(QMainWindow):
     """
     选择图片并显示
     """
+
     def select_img(self):
         filePath, _ = QFileDialog.getOpenFileName(
             self.ui,  # 父窗口对象
@@ -231,6 +314,11 @@ class GUI(QMainWindow):
             if file_extension.lower() == '.dcm':
                 ds = pydicom.dcmread(self.filePath)
                 read_img = ds.pixel_array
+                # 原始图像增强
+                # output_img = rawimg_enhance(ds)
+                # read_img = output_img
+                self.window_left = int(ds.WindowCenter) - int(ds.WindowWidth) / 2
+                self.window_right = int(ds.WindowCenter) + int(ds.WindowWidth) / 2
             elif file_extension.lower() in ['.tif', '.tiff']:
                 with Image.open(self.filePath) as read_img:
                     # 如果tif只有一帧，那么直接读取
@@ -281,7 +369,7 @@ class GUI(QMainWindow):
         # self.img_win.addScenes(self.img_enhance if self.img_enhance is not None else self.img, self.filePath, True)
         # 如果没有反色，那么在这里绘制histogram
         if self.ui.reverseButton.isChecked() is not True:
-            DrawHist.plot_histogram(self.img)
+            DrawHist.plot_histogram(self.img, self.window_left, self.window_right)
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
 

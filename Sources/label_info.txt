@@ -1,4 +1,6 @@
-defect
-疏松缺陷
-裂纹
-疏松
+GM
+QK
+DM
+LW
+SK
+SS

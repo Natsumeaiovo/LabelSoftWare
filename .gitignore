@@ -4,6 +4,7 @@
 *.tiff
 *.png
 *.jpg
+*.json
 /image/dcm/
 *.exe
 /dist/
