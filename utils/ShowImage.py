@@ -630,7 +630,6 @@ class CustomRectItem(QGraphicsRectItem):
     # 重写paint方法，添加缺陷标签label信息
     def paint(self, painter, option, widget):
         super().paint(painter, option, widget)
-        print("============paint============")
         painter.setPen(QPen(Qt.red))
         font = painter.font()
         font.setFamily("Microsoft YaHei")

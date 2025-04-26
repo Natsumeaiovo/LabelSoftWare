@@ -85,7 +85,7 @@ class GUI(QMainWindow):
                                                  self.ui.window_level_slider, self.ui.min_label, self.ui.max_label,
                                                  self.ui.window_width_label, self.ui.window_level_label,
                                                  self.ui.histogram)
-        self.show_dcm_name = ShowDCMName.DicomViewer(self.ui.listWidget_dcm_name)
+        self.show_dcm_name = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
 
         # self.setCentralWidget(self.ui)
         # # 将 MyGraphicsView 放入 graphicsView_2 的布局中

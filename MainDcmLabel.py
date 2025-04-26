@@ -8,7 +8,9 @@ File : MainDcmLabel.py
 Lab: Information Group of InteCast Software Center
 Function of the program: 
 """
+
 import json
+import os
 
 import pydicom
 from PySide2 import QtCore
@@ -16,9 +18,9 @@ from PySide2 import QtGui
 from PySide2.QtCore import Signal, QObject, QThread, QTimer
 from PySide2.QtGui import QIcon
 from PySide2.QtUiTools import QUiLoader
-from PySide2.QtWidgets import QApplication, QMainWindow
+from PySide2.QtWidgets import QApplication, QMainWindow, QListWidgetItem, QListWidget, QWidget
 from PySide2.QtWidgets import QFileDialog
-import os
+
 from utils import DrawHist
 from utils import SetValue
 from utils import ShowDCMName
@@ -30,9 +32,6 @@ from utils.QSSLoader import QSSLoader
 from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
 
-
-import json
-import os
 
 # 保存图片临时信息（窗宽、窗位、是否反色）
 def save_img_tmp_info(image_path, window_width, window_level, reverse_checked):
@@ -185,6 +184,7 @@ class GUI(QMainWindow):
         self.ui = QUiLoader().load('UI/pic.ui')
         self.img = None
         self.img_enhance = None
+        self.folder_path = ""
         self.filePath = ""
         self.ongoing = False
         self.window_left = 0
@@ -203,7 +203,7 @@ class GUI(QMainWindow):
                                                  self.ui.window_level_slider, self.ui.min_label, self.ui.max_label,
                                                  self.ui.window_width_label, self.ui.window_level_label,
                                                  self.ui.histogram)
-        self.show_dcm_name = ShowDCMName.DicomViewer(self.ui.listWidget_dcm_name)
+        self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
 
         # self.setCentralWidget(self.ui)
         # # 将 MyGraphicsView 放入 graphicsView_2 的布局中
@@ -214,7 +214,9 @@ class GUI(QMainWindow):
         """
         点击图片名 连接并传递一个QListWidgetItem 对象给 show_img 方法作为其参数。
         """
-        self.ui.listWidget_dcm_name.itemClicked.connect(lambda item: self.show_img(item=item))
+        self.ui.listWidget_dcm_name.itemClicked.connect(
+            lambda item: self.show_img(item)
+        )
 
         # 最小、最大、窗宽、窗位slider 值变化信号 连接到 window_image_main
         self.ui.min_slider.valueChanged.connect(self.window_image_main)
@@ -271,6 +273,7 @@ class GUI(QMainWindow):
         if filePath == '':
             return
         self.filePath = os.path.normpath(filePath)
+        print("filePath" + filePath)
         self.show_img(filePath=self.filePath)
 
         # 使用 os.path.dirname 获取路径部分
@@ -278,7 +281,8 @@ class GUI(QMainWindow):
         # # 使用 os.path.basename 获取文件名部分
         # filename = os.path.basename(self.filePath)
 
-        self.show_dcm_name.open_folder(directory)
+        self.image_name_list.open_folder(directory)
+        self.folder_path = directory
         print("dire path: ", directory)
 
     """
@@ -297,12 +301,24 @@ class GUI(QMainWindow):
             if self.ui.reverseButton.isChecked() is not True:
                 self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, self.img)
 
+    # 如果进行了手动保存，或者勾选了自动保存，那么查看图片时，将list对应item标记为已查看
+    def set_item_viewed(self, listWidget: QListWidget, file_name: str, manual_save: bool):
+        # 在传入的listWidget中查找对应项目
+        for i in range(listWidget.count()):
+            list_item = listWidget.item(i)
+            if list_item.text() == file_name:
+                if self.ui.autoSaveButton.isChecked() or manual_save:
+                    list_item.setIcon(QIcon('./Sources/viewed'))
+                break
+
     def show_img(self, item=None, filePath=None, quick_trans_method=None):
         is_item_changed = False
         if item is not None:
             self.filePath = os.path.join(os.path.dirname(self.filePath), item.text())
             filePath = self.filePath
             quick_trans_method = None
+            self.set_item_viewed(self.ui.listWidget_dcm_name, item.text(), False)
+
         if quick_trans_method is not None:
             self.img_quick_trans(quick_trans_method)
         # 如果传了item参数(图片)，那么更改filePath为item的地址，并且不变换slider
@@ -445,6 +461,8 @@ class GUI(QMainWindow):
 
     # 保存标注
     def save_xml(self):
+        file_name = os.path.basename(self.filePath)  # 从路径中提取文件名
+        self.set_item_viewed(self.ui.listWidget_dcm_name, file_name, True)
         items = self.img_win.get_scene_items()
         # 如果items为空，直接返回
         if not items:
@@ -454,10 +472,11 @@ class GUI(QMainWindow):
         # print(rect_items, len(rect_items))
         pixmapItem = self.img_win.get_pixmapItem()
         ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img.shape, pixmapItem)
+        self.image_name_list.update_item_status(self.ui.listWidget_dcm_name, file_name)
 
     def auto_save_xml(self, checked):
         if checked:
-            self.auto_save_timer.start(300)
+            self.auto_save_timer.start(100)
         else:
             self.auto_save_timer.stop()
 
