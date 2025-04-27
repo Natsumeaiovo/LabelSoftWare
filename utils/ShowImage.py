@@ -10,77 +10,23 @@ Function of the program: 显示图片，缩放图片，并进行标签框添加
 """
 
 import os
+from typing import List
 
 import numpy as np
 from PySide2 import QtCore
 from PySide2 import QtGui
 from PySide2 import QtWidgets
 from PySide2.QtCore import Qt, QRectF, QPointF
-from PySide2.QtGui import QPen, QBrush, QColor, QIcon
+from PySide2.QtGui import QPen, QBrush, QColor
 from PySide2.QtGui import Qt
-from PySide2.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QListWidget, QComboBox, \
-    QVBoxLayout, QSpacerItem, QSizePolicy
+from PySide2.QtWidgets import QDialog, QListWidget
 from PySide2.QtWidgets import QGraphicsView, QGraphicsRectItem, QGraphicsItem, QColorDialog, QInputDialog, QMenu
 from PySide2.QtWidgets import QWidget, QListWidgetItem, QGraphicsPixmapItem
 
 from utils import FromXML
 from utils import ToXML5D0
-from utils.QSSLoader import QSSLoader
+from widgets.LabelDialog import LabelDialog
 
-
-class LabelDialog(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Enter Label and Comment:")
-        self.setFixedWidth(300)  # 窗口宽度
-        self.setFixedHeight(150)  # 窗口高度
-        self.setFont(QtGui.QFont("MicroSoft YaHei", 10))
-
-        # 主布局
-        main_layout = QVBoxLayout(self)
-
-        # 表单布局
-        form_layout = QFormLayout()
-        self.label_combo = QComboBox(self)
-        self.label_combo.setFixedHeight(30)  # 调整组件高度
-        self.load_labels()
-
-        self.comment_edit = QLineEdit(self)
-        self.comment_edit.setFixedHeight(30)  # 调整组件高度
-
-        form_layout.addRow("Label:", self.label_combo)
-        form_layout.addRow("Comment:", self.comment_edit)
-
-        # 确定按钮
-        self.ok_button = QPushButton("完成标注", self)
-        self.ok_button.setFixedHeight(35)  # 调整按钮高度
-        self.ok_button.clicked.connect(self.accept)
-
-        # 添加表单布局
-        main_layout.addLayout(form_layout)
-
-        # 添加弹性空间和按钮
-        main_layout.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Minimum, QSizePolicy.Expanding))  # 顶部弹性
-        main_layout.addWidget(self.ok_button, alignment=Qt.AlignCenter)
-        # main_layout.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Minimum, QSizePolicy.Expanding))  # 底部弹性
-
-        # 设置样式表
-        style_file = "./QSS-master/MacOS.qss"
-        style_sheet = QSSLoader.read_qss_file(style_file)
-        self.setStyleSheet(style_sheet)
-        self.setWindowIcon(QIcon("./Sources/intecast.ico"))
-
-    def load_labels(self):
-        try:
-            with open("./Sources/label_info.txt", "r", encoding="utf-8") as file:
-                labels = file.readlines()
-                for label in labels:
-                    self.label_combo.addItem(label.strip())
-        except FileNotFoundError:
-            pass
-
-    def get_values(self):
-        return self.label_combo.currentText(), self.comment_edit.text()
 
 class IMG_WIN(QWidget):
     def __init__(self, graphicsView: QGraphicsView, listWidget: QListWidget):
@@ -115,9 +61,9 @@ class IMG_WIN(QWidget):
         self.moving = False  # 鼠标是否在移动
         self.resizing = False  # 是否在resize方框
         self.start_pos = QtCore.QPointF()
-        self.current_rect = None
+        self.current_rect: CustomRectItem = None
         self.resizing_rect = None
-        self.rect_items = []
+        self.rect_items: List[CustomRectItem] = []
         self.updating_selection = False
 
 
@@ -140,7 +86,7 @@ class IMG_WIN(QWidget):
         # 如果clear为True，清空原有的标签框
         if clear:
             self.scene.clear()
-            self.rect_items = []
+            self.rect_items.clear()
             self.listWidget.clear()
             self.pixmapItem = self.scene.addPixmap(self.pixmap)  # 添加图元
         else:
@@ -160,8 +106,9 @@ class IMG_WIN(QWidget):
                                          os.path.basename(os.path.dirname(path)) + "-XML")
             xml_name, suffix = os.path.splitext(os.path.basename(path))
             path_xml = os.path.join(save_xml_path, xml_name + ".xml")
+            xml_file_path = str(path_xml)
             if os.path.exists(path_xml):
-                label, xmin, ymin, xmax, ymax, comment_pose = FromXML.FromXML(path=path_xml)
+                label, xmin, ymin, xmax, ymax, comment_pose = FromXML.analysis_xml(path=path_xml)
                 print(label, xmin, ymin, xmax, ymax)
                 for index, label in enumerate(label):
                     x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
@@ -169,7 +116,7 @@ class IMG_WIN(QWidget):
                     x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
                     y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
                     self.current_rect = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)), self,
-                                                       label=label)
+                                                       label=label, comment=comment_pose[index])
                     self.scene.addItem(self.current_rect)
 
                     self.current_rect.label = label
@@ -189,6 +136,7 @@ class IMG_WIN(QWidget):
         # if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
         if event.button() == Qt.RightButton:
             item = self.graphicsView.itemAt(event.scenePos().toPoint())
+            # 如果鼠标右键在标注框上
             if isinstance(item, CustomRectItem):
                 cursor_shape = item.get_cursor_shape(event.scenePos())
                 if cursor_shape in [Qt.SizeHorCursor, Qt.SizeVerCursor]:
@@ -201,11 +149,12 @@ class IMG_WIN(QWidget):
                 self.moving = True
                 self.resizing_rect = item
                 return
-            self.start_pos = event.scenePos()
-            # 正在绘制方框
-            self.drawing = True
-            self.current_rect = CustomRectItem(QRectF(self.start_pos, self.start_pos), self)
-            self.scene.addItem(self.current_rect)
+            else:
+                self.start_pos = event.scenePos()
+                # 正在绘制方框
+                self.drawing = True
+                self.current_rect = CustomRectItem(QRectF(self.start_pos, self.start_pos), self)
+                self.scene.addItem(self.current_rect)
 
     def scene_mouseReleaseEvent(self, event):
         # if event.button() == Qt.LeftButton:
@@ -227,6 +176,12 @@ class IMG_WIN(QWidget):
             if self.resizing:
                 self.resizing = False
                 self.resizing_rect = None
+
+        for rect_item in self.rect_items:
+            # rect_item.prepareGeometryChange()  # 预处理几何变化
+            rect_item.update()
+        # 更新视图
+        self.scene.update()
 
         # super(QtWidgets.QGraphicsScene, self).mouseReleaseEvent(event)
 
@@ -269,8 +224,8 @@ class IMG_WIN(QWidget):
                 if isinstance(item, CustomRectItem):
                     item.setPos(item.pos() + self.MouseMove)
 
-    # 定义滚轮方法。当鼠标在图元范围之外，以图元中心为缩放原点；当鼠标在图元之中，以鼠标悬停位置为缩放中心
     def scene_wheelEvent(self, event):
+        """定义滚轮方法。当鼠标在图元范围之外，以图元中心为缩放原点；当鼠标在图元之中，以鼠标悬停位置为缩放中心"""
         angle = event.delta() / 8  # 返回QPoint对象，为滚轮转过的数值，单位为1/8度
         if angle > 0:
             # print("滚轮上滚")
@@ -520,11 +475,10 @@ class IMG_WIN(QWidget):
             self.update_rect_items(True)
             print("添加标注框成功！")
 
-    # 更新方框信息，包括标签信息和位置信息
     def update_rect_items(self, isUpdateLabel):
+        """更新方框信息，包括标签信息和位置信息"""
         # 如果要更新标签信息，先把方框listWidget全部清空
         if isUpdateLabel:
-            print("更新标签信息！")
             self.listWidget.clear()
 
         # 再遍历对rect_items列表，添加到方框listWidget中
@@ -535,11 +489,16 @@ class IMG_WIN(QWidget):
             # 将场景坐标转换为pixmapItem的坐标
             self.pixmapItem.mapFromScene(item.mapToScene(top_left))
             self.pixmapItem.mapFromScene(item.mapToScene(bottom_right))
+            x_min = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().topLeft())).x())
+            y_min = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().topLeft())).y())
+            x_max = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().bottomRight())).x())
+            y_max = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().bottomRight())).y())
+            width, height = x_max-x_min, y_max-y_min
             # 如果更新标签信息
             if isUpdateLabel:
-                item = QListWidgetItem(f"Label: {item.label}, Comment: {item.comment}")
-                item.setFlags(item.flags() | Qt.ItemIsEditable)
-                self.listWidget.addItem(item)
+                listWidgetItem = QListWidgetItem(f"Label: {item.label}, Comment: {item.comment}, ({width}, {height})")
+                listWidgetItem.setFlags(listWidgetItem.flags() | Qt.ItemIsEditable)
+                self.listWidget.addItem(listWidgetItem)
 
     def on_list_selection_changed(self):
         if self.updating_selection:
@@ -584,11 +543,11 @@ class IMG_WIN(QWidget):
     def get_pixmapItem(self):
         return self.pixmapItem
 
-    def save_xml(self):
-        items = self.get_scene_items()
-        rect_items = self.get_rect_items()
-        pixmapItem = self.get_pixmapItem()
-        ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img)
+    # def save_xml(self):
+    #     items = self.get_scene_items()
+    #     rect_items = self.get_rect_items()
+    #     pixmapItem = self.get_pixmapItem()
+    #     ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img)
 
 
 class CustomRectItem(QGraphicsRectItem):
@@ -596,19 +555,24 @@ class CustomRectItem(QGraphicsRectItem):
     default_pen_color = QColor(Qt.red)
     default_brush_color = QColor(Qt.transparent)
 
-    def __init__(self, rect, img_win: IMG_WIN, label='', comment='', radio_start=1):
+    def __init__(self, rect: QRectF, img_win: IMG_WIN, label='', comment='', radio_start=1):
         super().__init__(rect)
+        self.pen_width = CustomRectItem.default_pen_width
+        self.brush_color = CustomRectItem.default_brush_color
+        self.pen_color = QColor(Qt.red)
         self.img_win = img_win
+        self.pixmapItem = self.img_win.get_pixmapItem()
+        self.label = label
+        self.comment = comment
+        self._comment = comment  # 私有变量存储实际数据，comment变化时自动更新方框颜色
+        self.radio_start = radio_start
         self.setFlags(QGraphicsRectItem.ItemIsSelectable |
                       QGraphicsRectItem.ItemIsMovable |
                       QGraphicsRectItem.ItemIsFocusable |
                       QGraphicsRectItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
-
-        self.pen_width = CustomRectItem.default_pen_width
-        self.pen_color = CustomRectItem.default_pen_color
-        self.brush_color = CustomRectItem.default_brush_color
+        self.set_pen_color_from_comment()   # 根据 comment 设置笔的颜色
 
         self.pen = QPen(self.pen_color, self.pen_width)
         self.brush = QBrush(self.brush_color)
@@ -620,23 +584,65 @@ class CustomRectItem(QGraphicsRectItem):
         self.orig_rect = rect
         self.orig_pos = QPointF(0, 0)
 
-        self.label = label
-        self.comment = comment
-        self.radio_start = radio_start
-
         # 启用实时几何变化通知
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+        # 调用一个线程持续监听self.comment的值，如果改变自动触发set_pen_color_from_comment方法
 
-    # 重写paint方法，添加缺陷标签label信息
+
+    @property
+    def comment(self):
+        return self._comment
+
+    @comment.setter
+    def comment(self, value):
+        """当comment被修改时自动调用该方法更新颜色"""
+        self._comment = value
+        self.set_pen_color_from_comment()
+
+    def set_pen_color_from_comment(self):
+        """根据comment_pose设置方框的颜色"""
+        if self._comment == '自动检测':
+            self.default_pen_color = QColor(Qt.blue)
+            self.pen_color = QColor(Qt.blue)  # 自动检测设置为蓝色
+        else:
+            self.default_pen_color = QColor(Qt.red)
+            self.pen_color = QColor(Qt.red)  # 其他情况设置为红色
+
+        # 更新笔设置
+        self.pen = QPen(self.pen_color, self.pen_width)
+        self.setPen(self.pen)
+        # 强制更新视图
+        if self.scene():
+            self.scene().update()
+
     def paint(self, painter, option, widget):
+        """重写paint方法，添加缺陷标签label，和缺陷位置信息"""
         super().paint(painter, option, widget)
-        painter.setPen(QPen(Qt.red))
+        painter.setPen(self.default_pen_color)
         font = painter.font()
         font.setFamily("Microsoft YaHei")
         font.setPointSize(12)
         painter.setFont(font)
-        text_position = self.rect().topLeft() + QPointF(0, -7)  # Adjust the offset as needed
-        painter.drawText(text_position, self.label)
+        # 构建要显示的文本
+        display_text = self.label
+
+        # 实时计算宽高信息
+        top_left = self.mapToScene(self.rect().topLeft())
+        bottom_right = self.mapToScene(self.rect().bottomRight())
+
+        x_min = int(self.pixmapItem.mapFromScene(top_left).x())
+        y_min = int(self.pixmapItem.mapFromScene(top_left).y())
+        x_max = int(self.pixmapItem.mapFromScene(bottom_right).x())
+        y_max = int(self.pixmapItem.mapFromScene(bottom_right).y())
+
+        width = abs(x_max - x_min)
+        height = abs(y_max - y_min)
+        display_text += f" (w, h)=({width},{height})"
+
+        # 绘制文本，位置在框的左上角上方
+        text_position = self.rect().topLeft() + QPointF(0, -7)  # 调整位置偏移
+        painter.drawText(text_position, display_text)
+        self.update_info(True)
 
     def hoverMoveEvent(self, event):
         cursor = self.get_cursor_shape(event.pos())
@@ -662,15 +668,40 @@ class CustomRectItem(QGraphicsRectItem):
         return Qt.ArrowCursor
 
     def contextMenuEvent(self, event):
+        """右键菜单栏"""
         menu = QMenu()
 
-        change_color_action = menu.addAction("Change Color")
+        change_color_action = menu.addAction("改变颜色")
         change_color_action.triggered.connect(lambda: self.change_color())
 
-        change_width_action = menu.addAction("Change Line Width")
+        change_width_action = menu.addAction("改变线宽")
         change_width_action.triggered.connect(lambda: self.change_line_width())
 
-        delete_action = menu.addAction("Delete")
+        change_to_manual = menu.addAction("修改为人工标注")
+        change_to_manual.triggered.connect(lambda: self.change_to_manual())
+
+        change_to_auto = menu.addAction("修改为机器标注")
+        change_to_auto.triggered.connect(lambda: self.change_to_auto())
+
+        # 定义一个二级菜单，里面读取项目根目录./Sources/label_info.txt下的每一行作为一个选项，选中该选项则修改当前的方框的label为该值
+        label_menu = menu.addMenu("修改标签")
+        # 尝试读取标签信息文件
+        try:
+            with open("./Sources/label_info.txt", "r", encoding="utf-8") as file:
+                labels = file.read().splitlines()
+
+            # 只添加非空行
+            for label in labels:
+                if label.strip():
+                    label_action = label_menu.addAction(label)
+                    # 使用 lambda 函数，并通过 default 参数传递当前循环的 label 值
+                    label_action.triggered.connect(lambda checked=False, lbl=label: self.change_label(lbl))
+        except Exception as e:
+            # 其他异常处理
+            error_action = label_menu.addAction(f"读取文件错误: {str(e)}")
+            error_action.setEnabled(False)
+
+        delete_action = menu.addAction("删除")
         delete_action.triggered.connect(lambda: self.delete_item())
 
         # 显示菜单
@@ -716,6 +747,27 @@ class CustomRectItem(QGraphicsRectItem):
                 self.img_win.rect_items.remove(self)
                 self.img_win.update_rect_items(True)
 
+    def change_to_manual(self):
+        self.comment = "None"
+        # 修改 listWidget_label中对应的项
+        if self in self.img_win.rect_items:
+            self.img_win.update_rect_items(True)
+
+    def change_to_auto(self):
+        self.comment = "自动检测"
+        if self in self.img_win.rect_items:
+            self.img_win.update_rect_items(True)
+
+    def change_label(self, new_label):
+        """修改方框的标签"""
+        self.label = new_label
+        # 更新列表显示
+        if self in self.img_win.rect_items:
+            self.img_win.update_rect_items(True)
+        # 强制场景更新以显示新标签
+        if self.scene():
+            self.scene().update()
+
     # 如果方框item的变化属于位置变化，那么更新方框信息
     def itemChange(self, change, value):
         # 实时响应位置/变换变化
@@ -731,6 +783,7 @@ class CustomRectItem(QGraphicsRectItem):
     def update_info(self, isUpdateLabel: bool):
         # self.scene().parent().update_rect_items(isUpdateLabel)
         self.img_win.update_rect_items(isUpdateLabel)
+        self.update()
 
     def update_info_label(self, label, comment):
         self.label = label

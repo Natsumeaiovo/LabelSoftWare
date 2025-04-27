@@ -12,7 +12,7 @@ Function of the program:
 import xml.etree.ElementTree as ET
 
 
-def FromXML(path):
+def analysis_xml(path):
     # 解析XML文件
     tree = ET.parse(path)
     root = tree.getroot()

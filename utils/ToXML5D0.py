@@ -52,14 +52,22 @@ class CreatSaveXml():
 
             bndbox = ET.SubElement(object, "bndbox")
             if using == "dcm":
+                # ET.SubElement(bndbox, "xmin").text = str(int(pixmapItem.mapFromScene(
+                #     items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().topLeft())).x()))
+                # ET.SubElement(bndbox, "ymin").text = str(int(pixmapItem.mapFromScene(
+                #     items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().topLeft())).y()))
+                # ET.SubElement(bndbox, "xmax").text = str(int(pixmapItem.mapFromScene(
+                #     items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().bottomRight())).x()))
+                # ET.SubElement(bndbox, "ymax").text = str(int(pixmapItem.mapFromScene(
+                #     items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().bottomRight())).y()))
                 ET.SubElement(bndbox, "xmin").text = str(int(pixmapItem.mapFromScene(
-                    items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().topLeft())).x()))
+                    item.mapToScene(item.rect().topLeft())).x()))
                 ET.SubElement(bndbox, "ymin").text = str(int(pixmapItem.mapFromScene(
-                    items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().topLeft())).y()))
+                    item.mapToScene(item.rect().topLeft())).y()))
                 ET.SubElement(bndbox, "xmax").text = str(int(pixmapItem.mapFromScene(
-                    items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().bottomRight())).x()))
+                    item.mapToScene(item.rect().bottomRight())).x()))
                 ET.SubElement(bndbox, "ymax").text = str(int(pixmapItem.mapFromScene(
-                    items[len(items) - 2 - index].mapToScene(items[len(items) - 2 - index].rect().bottomRight())).y()))
+                    item.mapToScene(item.rect().bottomRight())).y()))
             else:
                 print(pixmapItem)
                 print(rect_items)
