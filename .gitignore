@@ -1,11 +1,13 @@
 *.rar
+*.zip
+*.7z
 *.dcm
 *.tif
 *.tiff
 *.png
 *.jpg
 *.json
-/image/dcm/
+/image/
 *.exe
 /dist/
 /build/

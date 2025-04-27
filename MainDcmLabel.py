@@ -471,7 +471,7 @@ class GUI(QMainWindow):
         rect_items = self.img_win.get_rect_items()
         # print(rect_items, len(rect_items))
         pixmapItem = self.img_win.get_pixmapItem()
-        ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img.shape, pixmapItem)
+        ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img.shape, pixmapItem, isManual=True)
         self.image_name_list.update_item_status(self.ui.listWidget_dcm_name, file_name)
 
     def auto_save_xml(self, checked):

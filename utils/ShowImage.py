@@ -106,10 +106,11 @@ class IMG_WIN(QWidget):
                                          os.path.basename(os.path.dirname(path)) + "-XML")
             xml_name, suffix = os.path.splitext(os.path.basename(path))
             path_xml = os.path.join(save_xml_path, xml_name + ".xml")
-            xml_file_path = str(path_xml)
             if os.path.exists(path_xml):
                 label, xmin, ymin, xmax, ymax, comment_pose = FromXML.analysis_xml(path=path_xml)
                 print(label, xmin, ymin, xmax, ymax)
+                if xmin == [] or ymin == [] or xmax == [] or ymax == []:
+                    return
                 for index, label in enumerate(label):
                     x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                     y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
@@ -125,10 +126,16 @@ class IMG_WIN(QWidget):
                     self.rect_items.append(self.current_rect)
                     self.update_rect_items(True)
                     self.current_rect = None
-        else:
-            pass
 
     def scene_MousePressEvent(self, event):
+        # 处理中键点击 - 直接传递给下层项目
+        if event.button() == Qt.MiddleButton:
+            item = self.scene.itemAt(event.scenePos(), self.graphicsView.transform())
+            if isinstance(item, CustomRectItem):
+                # 直接调用项目的中键菜单方法
+                item.showCustomMenu(event)
+                event.accept()  # 明确表示事件已处理
+                return
         # if event.modifiers() & QtCore.Qt.ControlModifier and event.buttons() & QtCore.Qt.LeftButton:
         if event.buttons() & QtCore.Qt.LeftButton:
             self.preMousePosition = event.scenePos()  # 获取鼠标当前位置
@@ -192,7 +199,7 @@ class IMG_WIN(QWidget):
             new_rect = self.resizing_rect.rect().adjusted(0, 0, delta.x(), delta.y())
             self.resizing_rect.setRect(new_rect)
             self.start_pos = current_pos
-            self.resizing_rect.update_info(False)
+            self.resizing_rect.update_info(True)
             return
 
         item = self.graphicsView.itemAt(event.scenePos().toPoint())
@@ -487,8 +494,8 @@ class IMG_WIN(QWidget):
             top_left = item.rect().topLeft()
             bottom_right = item.rect().bottomRight()
             # 将场景坐标转换为pixmapItem的坐标
-            self.pixmapItem.mapFromScene(item.mapToScene(top_left))
-            self.pixmapItem.mapFromScene(item.mapToScene(bottom_right))
+            # self.pixmapItem.mapFromScene(item.mapToScene(top_left))
+            # self.pixmapItem.mapFromScene(item.mapToScene(bottom_right))
             x_min = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().topLeft())).x())
             y_min = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().topLeft())).y())
             x_max = int(self.pixmapItem.mapFromScene(item.mapToScene(item.rect().bottomRight())).x())
@@ -496,6 +503,7 @@ class IMG_WIN(QWidget):
             width, height = x_max-x_min, y_max-y_min
             # 如果更新标签信息
             if isUpdateLabel:
+                print("更新listWidget！")
                 listWidgetItem = QListWidgetItem(f"Label: {item.label}, Comment: {item.comment}, ({width}, {height})")
                 listWidgetItem.setFlags(listWidgetItem.flags() | Qt.ItemIsEditable)
                 self.listWidget.addItem(listWidgetItem)
@@ -586,7 +594,6 @@ class CustomRectItem(QGraphicsRectItem):
 
         # 启用实时几何变化通知
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
-        # 调用一个线程持续监听self.comment的值，如果改变自动触发set_pen_color_from_comment方法
 
 
     @property
@@ -642,7 +649,7 @@ class CustomRectItem(QGraphicsRectItem):
         # 绘制文本，位置在框的左上角上方
         text_position = self.rect().topLeft() + QPointF(0, -7)  # 调整位置偏移
         painter.drawText(text_position, display_text)
-        self.update_info(True)
+        # self.update_info(True)    # 会导致循环调用
 
     def hoverMoveEvent(self, event):
         cursor = self.get_cursor_shape(event.pos())
@@ -667,8 +674,8 @@ class CustomRectItem(QGraphicsRectItem):
 
         return Qt.ArrowCursor
 
-    def contextMenuEvent(self, event):
-        """右键菜单栏"""
+    def showCustomMenu(self, event):
+        """中键菜单栏"""
         menu = QMenu()
 
         change_color_action = menu.addAction("改变颜色")
@@ -680,24 +687,20 @@ class CustomRectItem(QGraphicsRectItem):
         change_to_manual = menu.addAction("修改为人工标注")
         change_to_manual.triggered.connect(lambda: self.change_to_manual())
 
-        change_to_auto = menu.addAction("修改为机器标注")
-        change_to_auto.triggered.connect(lambda: self.change_to_auto())
+        # change_to_auto = menu.addAction("修改为机器标注")
+        # change_to_auto.triggered.connect(lambda: self.change_to_auto())
 
-        # 定义一个二级菜单，里面读取项目根目录./Sources/label_info.txt下的每一行作为一个选项，选中该选项则修改当前的方框的label为该值
+        # 定义标签菜单
         label_menu = menu.addMenu("修改标签")
-        # 尝试读取标签信息文件
         try:
             with open("./Sources/label_info.txt", "r", encoding="utf-8") as file:
                 labels = file.read().splitlines()
 
-            # 只添加非空行
             for label in labels:
                 if label.strip():
                     label_action = label_menu.addAction(label)
-                    # 使用 lambda 函数，并通过 default 参数传递当前循环的 label 值
                     label_action.triggered.connect(lambda checked=False, lbl=label: self.change_label(lbl))
         except Exception as e:
-            # 其他异常处理
             error_action = label_menu.addAction(f"读取文件错误: {str(e)}")
             error_action.setEnabled(False)
 
@@ -706,6 +709,7 @@ class CustomRectItem(QGraphicsRectItem):
 
         # 显示菜单
         menu.exec_(event.screenPos())
+
 
     def change_color(self):
         color = QColorDialog.getColor()

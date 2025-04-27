@@ -36,6 +36,22 @@ class ImageNameList(QMainWindow):
             print(f"检查XML文件出错: {e}")
             return False
 
+    def check_xml_viewed_status(self, xml_file_path: str) -> bool:
+        """检查XML文件是否存在且包含viewed标签且值为true"""
+        if not os.path.exists(xml_file_path):
+            return False
+
+        try:
+            import xml.etree.ElementTree as ET
+            tree = ET.parse(xml_file_path)
+            root = tree.getroot()
+            # 查找viewed标签
+            viewed_tag = root.find('viewed')
+            return viewed_tag is not None and viewed_tag.text.lower() == 'true'
+        except Exception as e:
+            print(f"检查XML文件viewed状态出错: {e}")
+            return False
+
     def open_folder(self, folder_path):
         print("folder_path", folder_path)
         if folder_path:
@@ -73,7 +89,7 @@ class ImageNameList(QMainWindow):
             xml_file_path = os.path.join(xml_folder_path, xml_file_name)
 
             # 查看状态图标
-            viewed = os.path.exists(xml_file_path)
+            viewed = self.check_xml_viewed_status(xml_file_path)
             list_item.setIcon(QIcon('./Sources/viewed' if viewed else './Sources/not_viewed'))
 
             # 创建一个只包含对象图标的自定义widget
@@ -84,8 +100,7 @@ class ImageNameList(QMainWindow):
             layout.addStretch(1)
 
             # 对象标注状态图标
-            has_object = False
-            if viewed:
+            if os.path.exists(xml_file_path):
                 has_object = self.check_xml_has_object(xml_file_path)
                 object_icon = QLabel()
                 object_pixmap = QPixmap('./Sources/has_defect' if has_object else './Sources/no_defect')
@@ -109,7 +124,7 @@ class ImageNameList(QMainWindow):
                 xml_file_path = os.path.join(xml_folder_path, xml_file_name)
 
                 # 设置查看状态图标
-                viewed = os.path.exists(xml_file_path)
+                viewed = self.check_xml_viewed_status(xml_file_path)
                 item.setIcon(QIcon('./Sources/viewed' if viewed else './Sources/not_viewed'))
 
                 # 创建一个只包含对象图标的自定义widget
@@ -121,14 +136,12 @@ class ImageNameList(QMainWindow):
                 layout.addStretch(1)
 
                 # 对象标注状态图标
-                has_object = False
-                if viewed:
+                if os.path.exists(xml_file_path):
                     has_object = self.check_xml_has_object(xml_file_path)
-
-                object_icon = QLabel()
-                object_pixmap = QPixmap('./Sources/has_defect' if has_object else './Sources/no_defect')
-                object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio))
-                layout.addWidget(object_icon)
+                    object_icon = QLabel()
+                    object_pixmap = QPixmap('./Sources/has_defect' if has_object else './Sources/no_defect')
+                    object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio))
+                    layout.addWidget(object_icon)
 
                 # 设置自定义widget
                 listWidget.setItemWidget(item, widget)

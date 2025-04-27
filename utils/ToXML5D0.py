@@ -19,7 +19,7 @@ class CreatSaveXml():
 
     # 先判断节点个数，再用循环找到他们的参数和值
     @staticmethod
-    def creat_xml(path, items, rect_items, image_size, pixmapItem, using="dcm", database="None"):
+    def creat_xml(path, items, rect_items, image_size, pixmapItem, using="dcm", database="None", isManual=False):
         root = ET.Element("annotation")
         ET.SubElement(root, "folder").text = os.path.basename(os.path.dirname(path))
         ET.SubElement(root, "filename").text = os.path.basename(path)
@@ -76,6 +76,9 @@ class CreatSaveXml():
                 ET.SubElement(bndbox, "xmax").text = str(pixmapItem[2][index])
                 ET.SubElement(bndbox, "ymax").text = str(pixmapItem[3][index])
 
+        # 如果isManual为True，添加viewed标签
+        if isManual:
+            ET.SubElement(root, "viewed").text = "true"
         tree = ET.ElementTree(root)
         save_xml_path = os.path.join(os.path.dirname(os.path.dirname(path)), os.path.basename(os.path.dirname(path))+"-XML")
         if not os.path.exists(save_xml_path):
@@ -90,5 +93,3 @@ class CreatSaveXml():
 
         with open(xml_path_name, "w", encoding='utf-8') as f:
             f.write(pretty_xml_as_str)
-
-

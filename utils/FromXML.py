@@ -28,10 +28,10 @@ def analysis_xml(path):
         label.append(obj.find('name').text)
         comment_pose.append(obj.find("pose").text)
         bndbox = obj.find('bndbox')
-
-        xmin.append(bndbox.find('xmin').text)
-        ymin.append(bndbox.find('ymin').text)
-        xmax.append(bndbox.find('xmax').text)
-        ymax.append(bndbox.find('ymax').text)
+        if bndbox:
+            xmin.append(bndbox.find('xmin').text)
+            ymin.append(bndbox.find('ymin').text)
+            xmax.append(bndbox.find('xmax').text)
+            ymax.append(bndbox.find('ymax').text)
 
     return label, xmin, ymin, xmax, ymax, comment_pose
