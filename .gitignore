@@ -4,10 +4,10 @@
 *.dcm
 *.tif
 *.tiff
-*.png
 *.jpg
 *.json
 /image/
+/image_info/
 *.exe
 /dist/
 /build/

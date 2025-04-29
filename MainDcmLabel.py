@@ -31,6 +31,7 @@ from utils.DcmDealFdi5d5 import *
 from utils.QSSLoader import QSSLoader
 from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
+from utils import EnhanceImage
 
 
 # 保存图片临时信息（窗宽、窗位、是否反色）
@@ -259,6 +260,12 @@ class GUI(QMainWindow):
         self.auto_save_timer.timeout.connect(self.save_xml)
         self.ui.autoSaveButton.toggled.connect(self.auto_save_xml)
 
+        self.ui.spinBox_1.valueChanged.connect(self.window_image_main)
+        self.ui.spinBox_2.valueChanged.connect(self.window_image_main)
+        self.ui.spinBox_3.valueChanged.connect(self.window_image_main)
+        self.ui.radioButton_enhance.clicked.connect(self.window_image_main)
+
+
     """
     选择图片并显示
     """
@@ -385,7 +392,7 @@ class GUI(QMainWindow):
         # self.img_win.addScenes(self.img_enhance if self.img_enhance is not None else self.img, self.filePath, True)
         # 如果没有反色，那么在这里绘制histogram
         if self.ui.reverseButton.isChecked() is not True:
-            DrawHist.plot_histogram(self.img, self.window_left, self.window_right)
+            DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
 
@@ -400,11 +407,25 @@ class GUI(QMainWindow):
         reverse_checked = self.ui.reverseButton.isChecked()  # 是否反色
         print("窗位：", window_level, "窗宽：", window_width)
         if isinstance(self.img, np.ndarray) and self.img.size > 0:
+            array = self.img
+            array_orl = self.img
+            # if self.ui.spinBox_3.value() != 0:
+            #     array = EnhanceImage.unsharp_mask(array, self.ui.spinBox_3.value(),
+            #                                      self.ui.spinBox_4.value(),(int(self.ui.spinBox_5.value()),int(self.ui.spinBox_5.value())))
+            self.ui.enhance_label_1.setText(f'对比限制:{self.ui.spinBox_1.value()}')
+            self.ui.enhance_label_2.setText(f'对比区域:{self.ui.spinBox_2.value()}')
+            self.ui.enhance_label_3.setText(f'图像锐化:{self.ui.spinBox_3.value()}')
+
+            if self.ui.radioButton_enhance.isChecked() is True:
+                # array = EnhanceImage.high_frequency_emphasis(array, self.ui.spinBox_3.value(),
+                #                                  self.ui.spinBox_4.value(),self.ui.spinBox_5.value())
+                array = cv2.GaussianBlur(array, (13, 13), 0)
+                array = cv2.addWeighted(array_orl, self.ui.spinBox_3.value(), array, 1 - self.ui.spinBox_3.value(), 0)
             # 当调整图片窗宽窗位时，会不断创建新的子线程
             self.thread = QThread(self)
             # print("创建一个子线程")
             # 创建 Worker 实例，并传递滑块的值
-            self.worker = Worker(self.img, window_level, window_width)
+            self.worker = Worker(array, window_level, window_width)
             # 连接 Worker 的 finished 信号到 update_ui 槽
             self.worker.finished.connect(self.update_ui)
             # 连接线程的 started 信号到 Worker 的方法
@@ -418,6 +439,15 @@ class GUI(QMainWindow):
 
     # 更新img_win
     def update_ui(self, array):
+        if self.ui.spinBox_1.value() != 0:
+            if self.ui.radioButton_enhance.isChecked() is True:
+                array = EnhanceImage.apply_clahe(array, self.ui.spinBox_1.value(),
+                                             (int(self.ui.spinBox_2.value()), int(self.ui.spinBox_2.value())))
+            # array = EnhanceImage.unsharp_mask(array, self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
+            # array = EnhanceImage.apply_hef(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
+            # array = EnhanceImage.clahe(array, int(self.ui.spinBox_1.value()), int(self.ui.spinBox_2.value()),
+            #                                int(self.ui.spinBox_3.value()))
+            # array = EnhanceImage.rawimg_enhance(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
         self.img_win.addScenes(array, self.filePath, False)
         # self.ongoing = False
 
@@ -455,7 +485,7 @@ class GUI(QMainWindow):
                 else:
                     self.img_win.addScenes(self.img, self.filePath, clear=is_item_changed)
                     self.window_image_main()
-            DrawHist.plot_histogram(self.img)
+            DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
 

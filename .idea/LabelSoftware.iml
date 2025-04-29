@@ -6,10 +6,9 @@
       <sourceFolder url="file://$MODULE_DIR$/Sources" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/UI" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/platforms" isTestSource="false" />
-      <excludeFolder url="file://$MODULE_DIR$/dist" />
-      <excludeFolder url="file://$MODULE_DIR$/image" />
       <excludeFolder url="file://$MODULE_DIR$/deprecated" />
-      <excludeFolder url="file://$MODULE_DIR$/build" />
+      <excludeFolder url="file://$MODULE_DIR$/image" />
+      <excludeFolder url="file://$MODULE_DIR$/img_info" />
     </content>
     <orderEntry type="jdk" jdkName="PySide2" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

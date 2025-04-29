@@ -1,23 +1,13 @@
-# -*- coding: utf-8 -*-
-
-"""
-Time : 2024/7/26 下午1:11
-Author : Hou Mingjun
-Email : houmingjun21@163.cpm
-File : DrawHist.py
-Lab: Information Group of InteCast Software Center
-Function of the program: 
-"""
-
-import pydicom
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
 
 
-# 绘制直方图
-def plot_histogram(pixel_array, window_left=0, window_right=65535):
+def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=False):
+    """
+    绘制像素值的灰度直方图并保存为图像
+    """
     # 设置图形大小
-    plt.figure(figsize=(8, 8))  # 这个设置是为了生成接近291x261像素的图像
+    plt.figure(figsize=(8, 8))
     dpi = 100
     fig = plt.gcf()
     fig.set_size_inches(291 / dpi, 261 / dpi)
@@ -28,17 +18,43 @@ def plot_histogram(pixel_array, window_left=0, window_right=65535):
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
     plt.margins(0, 0)
 
+    # 确定直方图bins和范围
+    bits = 16 if pixel_array.dtype == np.uint16 or pixel_array.dtype == np.int16 else 8
+    num_bins = 2 ** bits
+
+    # 动态调整直方图范围
+    if is_reversed:
+        # 反色时可能需要调整窗口范围
+        window_left_adjusted = min(window_left, pixel_array.min())
+        window_right_adjusted = max(window_right, pixel_array.max())
+        hist_range = (window_left_adjusted, window_right_adjusted)
+    else:
+        hist_range = (window_left, window_right)
+
     # 绘制直方图
-    histogram, bins = np.histogram(pixel_array.flatten(), bins=65536, range=(window_left, window_right))
+    histogram, bins = np.histogram(pixel_array.flatten(), bins=num_bins, range=hist_range)
     plt.plot(bins[:-1], histogram, color='r')
 
-    # 排除像素值为0的计数，计算除了0之外的最大值
-    non_zero_max_count = np.max(histogram[1:]) if histogram[1:].any() else 1
-    # plt.ylim(0, non_zero_max_count * 1.1)  # 给最大值一些额外的空间
-    upper_limit = min(non_zero_max_count * 1.1, 3000)  # 取1.1倍最大值和3000的较小者
-    plt.ylim(0, upper_limit)  # 应用硬性上限
+    # 计算非零区域的最大值，用于设置y轴范围
+    # 排除直方图的第一个值(通常为背景)后计算最大值
+    start_idx = 1 if not is_reversed else 0
+    end_idx = -1 if is_reversed else None  # 反色时排除最后一个值
 
-    # 显示直方图
-    plt.xlim(0, 65535)  # 横轴范围
+    if histogram[start_idx:end_idx].size > 0:
+        max_count = np.max(histogram[start_idx:end_idx])
+    else:
+        max_count = 1
+
+    # 设置y轴上限
+    upper_limit = min(max_count * 1.1, 2000)
+    plt.ylim(0, upper_limit)
+
+    # 设置x轴范围
+    if bits == 16:
+        plt.xlim(0, 65535)
+    else:
+        plt.xlim(0, 255)
+
+    # 保存直方图
     plt.savefig('histogram.png', bbox_inches='tight', pad_inches=0)
-    plt.close()  # 关闭matplotlib图形以释放资源
+    plt.close()
