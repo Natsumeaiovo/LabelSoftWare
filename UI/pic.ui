@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>957</width>
-    <height>725</height>
+    <width>1662</width>
+    <height>930</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -615,10 +615,13 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Maximum</enum>
+            </property>
             <property name="sizeHint" stdset="0">
              <size>
               <width>13</width>
-              <height>5</height>
+              <height>30</height>
              </size>
             </property>
            </spacer>
@@ -692,10 +695,13 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Maximum</enum>
+            </property>
             <property name="sizeHint" stdset="0">
              <size>
               <width>13</width>
-              <height>5</height>
+              <height>15</height>
              </size>
             </property>
            </spacer>
@@ -735,10 +741,13 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Preferred</enum>
+            </property>
             <property name="sizeHint" stdset="0">
              <size>
               <width>13</width>
-              <height>5</height>
+              <height>10</height>
              </size>
             </property>
            </spacer>
@@ -777,6 +786,9 @@
            <spacer name="verticalSpacer_2">
             <property name="orientation">
              <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Preferred</enum>
             </property>
             <property name="sizeHint" stdset="0">
              <size>
@@ -842,7 +854,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>957</width>
+     <width>1662</width>
      <height>23</height>
     </rect>
    </property>

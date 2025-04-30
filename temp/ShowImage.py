@@ -31,7 +31,7 @@ from widgets.LabelDialog import LabelDialog
 class IMG_WIN(QWidget):
     def __init__(self, graphicsView: QGraphicsView, listWidget: QListWidget):
         super().__init__()
-        self.rect_info_raw = None   # 在原始xml文件中所有标注框的位置信息
+        self.rectInfo = None
         self.img = None
         self.graphicsView = graphicsView
         self.listWidget = listWidget
@@ -114,7 +114,7 @@ class IMG_WIN(QWidget):
             path_xml = os.path.join(save_xml_path, xml_name + ".xml")
             if os.path.exists(path_xml):
                 label, xmin, ymin, xmax, ymax, comment_pose = FromXML.analysis_xml(path=path_xml)
-                self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
+                self.rectInfo = [label, xmin, ymin, xmax, ymax, comment_pose]
                 print(label, xmin, ymin, xmax, ymax)
                 if xmin == [] or ymin == [] or xmax == [] or ymax == []:
                     return
@@ -163,7 +163,7 @@ class IMG_WIN(QWidget):
             ymaxs.append(str(y_max))
             comments.append(item.comment)
 
-        self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments]
+        self.rectInfo = [labels, xmins, ymins, xmaxs, ymaxs, comments]
 
     def scene_MousePressEvent(self, event):
         # 处理中键点击 - 直接传递给下层项目
@@ -272,8 +272,6 @@ class IMG_WIN(QWidget):
     def scene_wheelEvent(self, event):
         """定义滚轮方法。当鼠标在图元范围之外，以图元中心为缩放原点；当鼠标在图元之中，以鼠标悬停位置为缩放中心"""
         angle = event.delta() / 8  # 返回QPoint对象，为滚轮转过的数值，单位为1/8度
-
-        ''' ------------------- 滑轮上滚，放大 ------------------- '''
         if angle > 0:
             # 计算新的缩放比例
             old_ratio = self.ratio
@@ -290,10 +288,11 @@ class IMG_WIN(QWidget):
                 y1 = self.pixmapItem.pos().y()
                 y2 = y1 + h
 
+                # 判断鼠标是否在图元内部
                 if (x1 < event.scenePos().x() < x2) and (y1 < event.scenePos().y() < y2):
-                    # 滑轮上滚，光标在图元内部
                     # 保存当前图元位置
                     old_pos = self.pixmapItem.pos()
+
                     # 设置新的缩放
                     self.pixmapItem.setScale(self.ratio)
 
@@ -311,7 +310,7 @@ class IMG_WIN(QWidget):
                     self.pixmapItem.setPos(old_pos - offset)
 
                     # 更新标注框
-                    if self.rect_info_raw:
+                    if self.rectInfo:
                         for i, rect_item in enumerate(self.rect_items):
                             # 删除旧的标注框
                             self.scene.removeItem(rect_item)
@@ -320,7 +319,7 @@ class IMG_WIN(QWidget):
                         self.rect_items.clear()
 
                         # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+                        label, xmin, ymin, xmax, ymax, comment_pose = self.rectInfo
 
                         for index, lbl in enumerate(label):
                             # 计算标注框在新缩放比例下的位置
@@ -342,8 +341,9 @@ class IMG_WIN(QWidget):
                     self.update_rect_items(True)
                     # 更新场景
                     self.scene.update()
+
                 else:
-                    # 滑轮上滚，光标在图元外部，以图元中心缩放
+                    # print('在外部')  # 以图元中心缩放
                     old_ratio = self.ratio
 
                     # 计算当前图像中心点
@@ -363,7 +363,7 @@ class IMG_WIN(QWidget):
                     self.pixmapItem.setPos(new_pos_x, new_pos_y)
 
                     # 更新标注框
-                    if self.rect_info_raw:
+                    if self.rectInfo:
                         for i, rect_item in enumerate(self.rect_items):
                             # 删除旧的标注框
                             self.scene.removeItem(rect_item)
@@ -372,7 +372,7 @@ class IMG_WIN(QWidget):
                         self.rect_items.clear()
 
                         # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+                        label, xmin, ymin, xmax, ymax, comment_pose = self.rectInfo
 
                         for index, lbl in enumerate(label):
                             # 计算标注框在新缩放比例下的位置
@@ -380,10 +380,12 @@ class IMG_WIN(QWidget):
                             y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
                             x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
                             y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
+
                             # 创建新的标注框
                             rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
                                                        self, label=lbl, comment=comment_pose[index])
                             rect_item.radio_start = self.ratio
+
                             # 添加到场景和列表
                             self.scene.addItem(rect_item)
                             self.rect_items.append(rect_item)
@@ -393,7 +395,6 @@ class IMG_WIN(QWidget):
                     # 更新场景
                     self.scene.update()
         else:
-            ''' ------------------- 滑轮下滚，缩小 ------------------- '''
             # 计算新的缩放比例
             old_ratio = self.ratio
             self.ratio -= self.zoom_step  # 缩放比例自减
@@ -411,7 +412,6 @@ class IMG_WIN(QWidget):
 
                 # 判断鼠标是否在图元内部
                 if (x1 < event.scenePos().x() < x2) and (y1 < event.scenePos().y() < y2):
-                    # 滑轮下滚，光标在图元内部
                     # 保存当前图元位置
                     old_pos = self.pixmapItem.pos()
 
@@ -432,7 +432,7 @@ class IMG_WIN(QWidget):
                     self.pixmapItem.setPos(old_pos - offset)
 
                     # 更新标注框
-                    if self.rect_info_raw:
+                    if self.rectInfo:
                         for i, rect_item in enumerate(self.rect_items):
                             # 删除旧的标注框
                             self.scene.removeItem(rect_item)
@@ -441,7 +441,7 @@ class IMG_WIN(QWidget):
                         self.rect_items.clear()
 
                         # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+                        label, xmin, ymin, xmax, ymax, comment_pose = self.rectInfo
 
                         for index, lbl in enumerate(label):
                             # 计算标注框在新缩放比例下的位置
@@ -463,8 +463,7 @@ class IMG_WIN(QWidget):
                     self.update_rect_items(True)
                     # 更新场景
                     self.scene.update()
-                else:
-                    # 滑轮下滚，光标在图元外部
+                else:   # 在图片外部
                     old_ratio = self.ratio
 
                     # 计算当前图像中心点
@@ -484,7 +483,7 @@ class IMG_WIN(QWidget):
                     self.pixmapItem.setPos(new_pos_x, new_pos_y)
 
                     # 更新标注框
-                    if self.rect_info_raw:
+                    if self.rectInfo:
                         for i, rect_item in enumerate(self.rect_items):
                             # 删除旧的标注框
                             self.scene.removeItem(rect_item)
@@ -493,7 +492,7 @@ class IMG_WIN(QWidget):
                         self.rect_items.clear()
 
                         # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+                        label, xmin, ymin, xmax, ymax, comment_pose = self.rectInfo
 
                         for index, lbl in enumerate(label):
                             # 计算标注框在新缩放比例下的位置
@@ -798,8 +797,8 @@ class CustomRectItem(QGraphicsRectItem):
                 index = self.img_win.rect_items.index(self)
 
                 # 更新rectInfo，从各个列表中删除对应索引的数据
-                if self.img_win.rect_info_raw:
-                    label, xmin, ymin, xmax, ymax, comment_pose = self.img_win.rect_info_raw
+                if self.img_win.rectInfo:
+                    label, xmin, ymin, xmax, ymax, comment_pose = self.img_win.rectInfo
                     if index < len(label):
                         label.pop(index)
                         xmin.pop(index)
@@ -808,7 +807,7 @@ class CustomRectItem(QGraphicsRectItem):
                         ymax.pop(index)
                         comment_pose.pop(index)
                         # 重新保存更新后的rectInfo
-                        self.img_win.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
+                        self.img_win.rectInfo = [label, xmin, ymin, xmax, ymax, comment_pose]
 
                 # 从scene和rect_items中删除
                 scene.removeItem(self)

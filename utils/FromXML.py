@@ -23,7 +23,7 @@ def analysis_xml(path):
     xmax = []
     ymax = []
 
-    # 提取所有对象的信息
+    # 提取所有对象（标注框）的信息
     for obj in root.findall('.//object'):
         label.append(obj.find('name').text)
         comment_pose.append(obj.find("pose").text)
