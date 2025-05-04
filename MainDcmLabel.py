@@ -265,16 +265,29 @@ class GUI(QMainWindow):
         self.ui.spinBox_3.valueChanged.connect(self.window_image_main)
         self.ui.radioButton_enhance.clicked.connect(self.window_image_main)
 
-
-    """
-    选择图片并显示
-    """
-
     def select_img(self):
+        """
+        选择图片并显示
+        """
+        # 尝试读取上次打开的目录
+        last_dir_file = os.path.join("temp", "last_dir.txt")
+        os.makedirs("temp", exist_ok=True)
+        # 设置默认目录为当前目录
+        initial_dir = os.getcwd()
+        # 如果存在上次记录的目录，则使用该目录
+        if os.path.exists(last_dir_file):
+            try:
+                with open(last_dir_file, "r") as f:
+                    saved_dir = f.read().strip()
+                if os.path.isdir(saved_dir):
+                    initial_dir = saved_dir
+            except Exception as e:
+                print(f"读取上次目录出错: {e}")
+
         filePath, _ = QFileDialog.getOpenFileName(
             self.ui,  # 父窗口对象
-            "选择你要上传的图片",  # 标题
-            r"D:\Project\LabelSoftware\image\dcm",  # 起始目录
+            "选择要浏览的图片目录",  # 标题
+            initial_dir,  # 起始目录
             "图片类型 (*.dcm *.png *.jpg *.bmp *.tif *.tiff)"  # 选择类型过滤项，过滤内容在括号中
         )
         if filePath == '':
@@ -288,15 +301,21 @@ class GUI(QMainWindow):
         # # 使用 os.path.basename 获取文件名部分
         # filename = os.path.basename(self.filePath)
 
+        # 保存当前打开的目录路径到temp文件
+        try:
+            with open(last_dir_file, "w") as f:
+                f.write(directory)
+        except Exception as e:
+            print(f"保存目录路径出错: {e}")
+
         self.image_name_list.open_folder(directory)
         self.folder_path = directory
         print("dire path: ", directory)
 
-    """
-    图像快速处理
-    """
-
     def img_quick_trans(self, quick_trans_method):
+        """
+        图像快速处理
+        """
         print("快速处理：", quick_trans_method)
         if quick_trans_method == NONE or quick_trans_method is None:
             self.ui.none_dcm_label.setChecked(True)
