@@ -31,7 +31,6 @@ from widgets.LabelDialog import LabelDialog
 class IMG_WIN(QWidget):
     def __init__(self, graphicsView: QGraphicsView, listWidget: QListWidget):
         super().__init__()
-        self.rect_info_raw = None   # 在原始xml文件中所有标注框的位置信息
         self.img = None
         self.graphicsView = graphicsView
         self.listWidget = listWidget
@@ -65,6 +64,12 @@ class IMG_WIN(QWidget):
         self.start_pos = QtCore.QPointF()
         self.current_rect: CustomRectItem = None
         self.resizing_rect = None
+        '''
+        rect_info_raw 是在原始xml文件中所有标注框的位置信息，即[label, xmin, ymin, xmax, ymax, comment_pose]
+        在缩放时需要用 rect_info_raw 来更新 rect_items，避免累计误差。但是在拖动和调整框时，注意调用 sync_rect_info_from_items
+        '''
+        self.rect_info_raw = None
+        # 当前 scene 中的所有矩形框列表
         self.rect_items: List[CustomRectItem] = []
         self.updating_selection = False
 
@@ -95,6 +100,7 @@ class IMG_WIN(QWidget):
             self.rect_items.clear()
             self.listWidget.clear()
             self.pixmapItem = self.scene.addPixmap(self.pixmap)  # 添加图元
+            self.sync_rect_info_from_items()  # 同步更新rectInfo
         else:
             for item in self.scene.items():
                 # 检查每个项是否为 QGraphicsPixmapItem
@@ -135,7 +141,7 @@ class IMG_WIN(QWidget):
                     self.current_rect = None
 
     def sync_rect_info_from_items(self):
-        """从当前所有rect_items同步更新rectInfo"""
+        """从当前所有rect_items同步更新rect_info_raw"""
         labels = []
         xmins = []
         ymins = []
@@ -184,7 +190,8 @@ class IMG_WIN(QWidget):
             # 如果鼠标右键在标注框上
             if isinstance(item, CustomRectItem):
                 cursor_shape = item.get_cursor_shape(event.scenePos())
-                if cursor_shape in [Qt.SizeHorCursor, Qt.SizeVerCursor]:
+                if cursor_shape in [Qt.SizeHorCursor, Qt.SizeVerCursor, Qt.SizeFDiagCursor]:
+                    # 如果 光标放在了标注框的边缘，那么是 resize 方框
                     self.resizing = True
                     self.resizing_rect = item
                     self.start_pos = event.scenePos()
@@ -232,6 +239,7 @@ class IMG_WIN(QWidget):
 
     def scene_mouseMoveEvent(self, event):
         if self.resizing and self.resizing_rect:
+            # 如果是在 resizing 方框
             current_pos = event.scenePos()
             delta = current_pos - self.start_pos
             new_rect = self.resizing_rect.rect().adjusted(0, 0, delta.x(), delta.y())
@@ -529,6 +537,11 @@ class IMG_WIN(QWidget):
             self.sync_rect_info_from_items()
             self.update_rect_items(True)
             print("添加标注框成功！")
+        else:
+            # 用户取消了对话框，需要从场景中删除矩形
+            if self.current_rect and self.current_rect.scene():
+                self.scene.removeItem(self.current_rect)
+            print("取消添加标注框")
 
     def update_rect_items(self, isUpdateLabel):
         """更新方框信息，包括标签信息和位置信息"""
@@ -708,6 +721,10 @@ class CustomRectItem(QGraphicsRectItem):
         local_pos = self.mapFromScene(pos)
         rect = self.rect()
         margin = 5  # 边界的宽度，可以根据需要调整
+
+        # 检查鼠标是否在右下角
+        if abs(local_pos.x() - rect.right()) <= margin and abs(local_pos.y() - rect.bottom()) <= margin:
+            return Qt.SizeFDiagCursor  # 斜向箭头，适合右下角调整
 
         # 检查是否在边线上
         # if abs(local_pos.x() - rect.left()) <= margin or abs(local_pos.x() - rect.right()) <= margin:

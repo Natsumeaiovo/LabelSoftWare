@@ -51,6 +51,8 @@ class LabelDialog(QDialog):
         self.setWindowIcon(QIcon("./Sources/intecast.ico"))
 
     def load_labels(self):
+        # 设置 ComboBox 为可编辑模式
+        self.label_combo.setEditable(True)
         try:
             with open("./Sources/label_info.txt", "r", encoding="utf-8") as file:
                 labels = file.readlines()

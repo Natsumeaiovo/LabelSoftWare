@@ -510,7 +510,7 @@ class GUI(QMainWindow):
 
     # 保存标注
     def save_xml(self):
-        print("保存标注！")
+        # print("保存标注！")
         file_name = os.path.basename(self.filePath)  # 从路径中提取文件名
         self.set_item_viewed(self.ui.listWidget_dcm_name, file_name, True)
         items = self.img_win.get_scene_items()
