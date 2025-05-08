@@ -327,8 +327,10 @@ class GUI(QMainWindow):
             if self.ui.reverseButton.isChecked() is not True:
                 self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, self.img)
 
-    # 如果进行了手动保存，或者勾选了自动保存，那么查看图片时，将list对应item标记为已查看
     def set_item_viewed(self, listWidget: QListWidget, file_name: str, manual_save: bool):
+        """
+        如果进行了手动保存，或者勾选了自动保存，那么查看图片时，将list对应item标记为已查看
+        """
         # 在传入的listWidget中查找对应项目
         for i in range(listWidget.count()):
             list_item = listWidget.item(i)
@@ -526,7 +528,7 @@ class GUI(QMainWindow):
 
     def auto_save_xml(self, checked):
         if checked:
-            self.auto_save_timer.start(100)
+            self.auto_save_timer.start(80)
         else:
             self.auto_save_timer.stop()
 

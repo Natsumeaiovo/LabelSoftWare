@@ -11,3 +11,5 @@
 *.exe
 /dist/
 /build/
+/temp/
+histogram.png
