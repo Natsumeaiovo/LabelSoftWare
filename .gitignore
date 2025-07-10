@@ -5,7 +5,9 @@
 *.tif
 *.tiff
 *.jpg
+*.png
 *.json
+*.txt
 /image/
 /image_info/
 *.exe

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1662</width>
-    <height>930</height>
+    <width>957</width>
+    <height>759</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -17,7 +17,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>华铸X射线探伤dcm图像增强与标记系统</string>
+   <string>铸造缺陷识别评价数据库可视化软件</string>
   </property>
   <property name="windowIcon">
    <iconset>
@@ -102,7 +102,7 @@
          </size>
         </property>
         <property name="title">
-         <string>图像名称</string>
+         <string>探伤图像</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_6">
          <item>
@@ -141,393 +141,322 @@
            <number>0</number>
           </property>
           <widget class="QWidget" name="page_3">
-           <widget class="QLabel" name="window_width_label">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>427</y>
-              <width>291</width>
-              <height>16</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>窗宽：</string>
-            </property>
-           </widget>
-           <widget class="QSlider" name="window_width_slider">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>450</y>
-              <width>291</width>
-              <height>22</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="minimum">
-             <number>0</number>
-            </property>
-            <property name="maximum">
-             <number>65535</number>
-            </property>
-            <property name="value">
-             <number>65535</number>
-            </property>
-            <property name="sliderPosition">
-             <number>65535</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-           </widget>
-           <widget class="QLabel" name="window_level_label">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>477</y>
-              <width>291</width>
-              <height>16</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>窗位：</string>
-            </property>
-           </widget>
-           <widget class="QLabel" name="max_label">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>110</y>
-              <width>291</width>
-              <height>16</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>最大值：</string>
-            </property>
-           </widget>
-           <widget class="QSlider" name="max_slider">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>132</y>
-              <width>291</width>
-              <height>22</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximum">
-             <number>65535</number>
-            </property>
-            <property name="value">
-             <number>65535</number>
-            </property>
-            <property name="sliderPosition">
-             <number>65535</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-           </widget>
-           <widget class="QSlider" name="window_level_slider">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>499</y>
-              <width>291</width>
-              <height>22</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximum">
-             <number>65535</number>
-            </property>
-            <property name="value">
-             <number>32768</number>
-            </property>
-            <property name="sliderPosition">
-             <number>32768</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-           </widget>
-           <widget class="QLabel" name="histogram">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>160</y>
-              <width>291</width>
-              <height>261</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>261</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>261</height>
-             </size>
-            </property>
-            <property name="autoFillBackground">
-             <bool>false</bool>
-            </property>
-            <property name="styleSheet">
-             <string notr="true"/>
-            </property>
-            <property name="text">
-             <string/>
-            </property>
-           </widget>
-           <widget class="QSlider" name="min_slider">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>82</y>
-              <width>291</width>
-              <height>22</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>22</height>
-             </size>
-            </property>
-            <property name="maximum">
-             <number>65535</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-           </widget>
-           <widget class="QLabel" name="min_label">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>60</y>
-              <width>291</width>
-              <height>16</height>
-             </rect>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>291</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>291</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>最小值：</string>
-            </property>
-           </widget>
-           <widget class="QWidget" name="layoutWidget">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>10</y>
-              <width>291</width>
-              <height>18</height>
-             </rect>
-            </property>
-            <layout class="QHBoxLayout" name="horizontalLayout_6">
-             <property name="sizeConstraint">
-              <enum>QLayout::SetDefaultConstraint</enum>
-             </property>
-             <item>
-              <widget class="QRadioButton" name="none_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>无</string>
-               </property>
-               <property name="checked">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QRadioButton" name="window_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>窗口化</string>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QRadioButton" name="normalize_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>归一化</string>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </widget>
-           <widget class="QWidget" name="layoutWidget">
-            <property name="geometry">
-             <rect>
-              <x>0</x>
-              <y>30</y>
-              <width>291</width>
-              <height>18</height>
-             </rect>
-            </property>
-            <layout class="QHBoxLayout" name="horizontalLayout_7">
-             <item>
-              <widget class="QRadioButton" name="partition_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>分区增强</string>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QRadioButton" name="sub_window_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>子图窗口化</string>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QRadioButton" name="sub_normalize_dcm_label">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>子图归一化</string>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </widget>
+           <layout class="QVBoxLayout" name="verticalLayout_4">
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_6">
+              <item>
+               <widget class="QRadioButton" name="none_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>无</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="window_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>窗口化</string>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="normalize_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>归一化</string>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_7">
+              <item>
+               <widget class="QRadioButton" name="partition_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>分区增强</string>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="sub_window_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>子图窗口化</string>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="sub_normalize_dcm_label">
+                <property name="minimumSize">
+                 <size>
+                  <width>40</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>子图归一化</string>
+                </property>
+                <property name="checked">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QLabel" name="min_label">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>16</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>16</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>最小值：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="min_slider">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="max_label">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>16</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>最大值：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="max_slider">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+              <property name="value">
+               <number>65535</number>
+              </property>
+              <property name="sliderPosition">
+               <number>65535</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="histogram">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>261</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>261</height>
+               </size>
+              </property>
+              <property name="autoFillBackground">
+               <bool>false</bool>
+              </property>
+              <property name="styleSheet">
+               <string notr="true"/>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="window_width_label">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>16</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>窗宽：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="window_width_slider">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+              <property name="value">
+               <number>65535</number>
+              </property>
+              <property name="sliderPosition">
+               <number>65535</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="window_level_label">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>16</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>窗位：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="window_level_slider">
+              <property name="minimumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>291</width>
+                <height>22</height>
+               </size>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+              <property name="value">
+               <number>32768</number>
+              </property>
+              <property name="sliderPosition">
+               <number>32768</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </widget>
           <widget class="QWidget" name="page_4"/>
          </widget>
@@ -618,13 +547,10 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Maximum</enum>
-            </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>13</width>
-              <height>30</height>
+              <width>286</width>
+              <height>6</height>
              </size>
             </property>
            </spacer>
@@ -698,13 +624,10 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Maximum</enum>
-            </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>13</width>
-              <height>15</height>
+              <width>286</width>
+              <height>6</height>
              </size>
             </property>
            </spacer>
@@ -732,6 +655,15 @@
                 <height>16777215</height>
                </size>
               </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>15</number>
+              </property>
+              <property name="value">
+               <number>1</number>
+              </property>
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
               </property>
@@ -744,13 +676,10 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Preferred</enum>
-            </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>13</width>
-              <height>10</height>
+              <width>286</width>
+              <height>6</height>
              </size>
             </property>
            </spacer>
@@ -778,6 +707,12 @@
                 <height>16777215</height>
                </size>
               </property>
+              <property name="maximum">
+               <number>80</number>
+              </property>
+              <property name="value">
+               <number>10</number>
+              </property>
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
               </property>
@@ -790,13 +725,10 @@
             <property name="orientation">
              <enum>Qt::Vertical</enum>
             </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Preferred</enum>
-            </property>
             <property name="sizeHint" stdset="0">
              <size>
-              <width>13</width>
-              <height>5</height>
+              <width>286</width>
+              <height>6</height>
              </size>
             </property>
            </spacer>
@@ -824,6 +756,12 @@
                 <height>16777215</height>
                </size>
               </property>
+              <property name="maximum">
+               <number>80</number>
+              </property>
+              <property name="value">
+               <number>14</number>
+              </property>
               <property name="orientation">
                <enum>Qt::Horizontal</enum>
               </property>
@@ -831,20 +769,20 @@
             </item>
            </layout>
           </item>
-          <item>
-           <spacer name="verticalSpacer">
-            <property name="orientation">
-             <enum>Qt::Vertical</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>13</width>
-              <height>5</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
          </layout>
+        </item>
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>286</width>
+            <height>18</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>
@@ -857,8 +795,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1662</width>
-     <height>23</height>
+     <width>957</width>
+     <height>22</height>
     </rect>
    </property>
   </widget>

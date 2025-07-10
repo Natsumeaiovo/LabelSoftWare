@@ -72,6 +72,7 @@ class IMG_WIN(QWidget):
         # 当前 scene 中的所有矩形框列表
         self.rect_items: List[CustomRectItem] = []
         self.updating_selection = False
+        self.is_dirty = False  # 添加一个脏标记
 
 
     # clear表示是否清空原有的标签框
@@ -170,6 +171,12 @@ class IMG_WIN(QWidget):
             comments.append(item.comment)
 
         self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments]
+        self.set_dirty()  # 在同步数据后，将数据标记为“脏”
+
+
+    def set_dirty(self, dirty=True):
+        """设置脏标记，表示数据已修改"""
+        self.is_dirty = dirty
 
     def scene_MousePressEvent(self, event):
         # 处理中键点击 - 直接传递给下层项目
@@ -831,6 +838,7 @@ class CustomRectItem(QGraphicsRectItem):
                 scene.removeItem(self)
                 self.img_win.rect_items.remove(self)
                 self.img_win.update_rect_items(True)
+                self.img_win.set_dirty()  # 删除后设置脏标记
 
     def change_to_manual(self):
         """修改为人工标注"""

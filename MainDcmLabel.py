@@ -257,7 +257,6 @@ class GUI(QMainWindow):
         # 初始化Timer
         self.auto_save_timer = QTimer(self)
         self.auto_save_timer.timeout.connect(self.save_xml)
-        self.auto_save_timer.timeout.connect(self.save_xml)
         self.ui.autoSaveButton.toggled.connect(self.auto_save_xml)
 
         self.ui.spinBox_1.valueChanged.connect(self.window_image_main)
@@ -512,7 +511,11 @@ class GUI(QMainWindow):
 
     # 保存标注
     def save_xml(self):
-        # print("保存标注！")
+        # 检查img_win中的脏标记，如果没有变化就不保存
+        if not self.img_win.is_dirty and self.auto_save_timer.isActive():
+            return
+
+        print("保存标注！")
         file_name = os.path.basename(self.filePath)  # 从路径中提取文件名
         self.set_item_viewed(self.ui.listWidget_dcm_name, file_name, True)
         items = self.img_win.get_scene_items()
@@ -526,10 +529,18 @@ class GUI(QMainWindow):
         ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img.shape, pixmapItem, isManual=True)
         self.image_name_list.update_item_status(self.ui.listWidget_dcm_name, file_name)
 
+        # 保存成功后，重置脏标记
+        self.img_win.set_dirty(False)
+
     def auto_save_xml(self, checked):
         if checked:
-            self.auto_save_timer.start(80)
+            # 启动定时器前，确保初始状态是干净的
+            self.img_win.set_dirty(False)
+            self.auto_save_timer.start(200)
         else:
+            # 停止时，可以考虑执行一次最终保存
+            if self.img_win.is_dirty:
+                self.save_xml()
             self.auto_save_timer.stop()
 
     def get_filepath(self):

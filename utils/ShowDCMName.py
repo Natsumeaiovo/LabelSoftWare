@@ -104,7 +104,7 @@ class ImageNameList(QMainWindow):
                 has_object = self.check_xml_has_object(xml_file_path)
                 object_icon = QLabel()
                 object_pixmap = QPixmap('./Sources/has_defect' if has_object else './Sources/no_defect')
-                object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio))
+                object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
                 layout.addWidget(object_icon)
 
             # 设置自定义widget
@@ -140,7 +140,7 @@ class ImageNameList(QMainWindow):
                     has_object = self.check_xml_has_object(xml_file_path)
                     object_icon = QLabel()
                     object_pixmap = QPixmap('./Sources/has_defect' if has_object else './Sources/no_defect')
-                    object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio))
+                    object_icon.setPixmap(object_pixmap.scaled(12, 12, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
                     layout.addWidget(object_icon)
 
                 # 设置自定义widget
