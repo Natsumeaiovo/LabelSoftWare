@@ -8,7 +8,7 @@ File : ShowImage.py
 Lab: Information Group of InteCast Software Center
 Function of the program: 显示图片，缩放图片，并进行标签框添加
 """
-
+import json
 import os
 from typing import List
 
@@ -74,6 +74,11 @@ class IMG_WIN(QWidget):
         self.updating_selection = False
         self.is_dirty = False  # 添加一个脏标记
 
+        self.is_excluding_pixels = False  # 是否处于“选择排除区域”模式
+        self.exclude_rects = []  # 存储排除区域的列表
+        self.auto_exclude_enabled = False
+        self.load_exclude_config()  # 初始化时加载配置
+
 
     # clear表示是否清空原有的标签框
     def addScenes(self, img, path, clear: bool):  # 绘制图形
@@ -126,6 +131,12 @@ class IMG_WIN(QWidget):
                 if xmin == [] or ymin == [] or xmax == [] or ymax == []:
                     return
                 for index, label in enumerate(label):
+                    # 在添加前检查是否应被排除
+                    current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                        ymin[index]), float(xmax[index]), float(ymax[index])
+                    if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                        print(f"标注 '{label}' 位于排除区域，已忽略。")
+                        continue  # 跳过此标注
                     x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                     y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
                     x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
@@ -219,14 +230,29 @@ class IMG_WIN(QWidget):
         # if event.button() == Qt.LeftButton:
         if event.button() == Qt.RightButton:
             if self.drawing:
+                self.drawing = False
                 # 如果鼠标释放位置与点击位置相同，那么不添加方框，直接返回
                 if self.start_pos == event.scenePos():
                     self.drawing = False
                     self.scene.removeItem(self.current_rect)
                     self.current_rect = None
+                    # 如果在排除模式，重置光标
+                    if self.is_excluding_pixels:
+                        self.set_exclude_mode(False)
                     return
-                self.drawing = False
-                self.label_and_comment_dialog()
+                # --- 判断当前模式 ---
+                if self.is_excluding_pixels:
+                    # --- 坏点排除模式 ---
+                    # 保存为排除区域
+                    self.save_exclude_rect(self.current_rect.rect())
+                    # 从场景中移除临时矩形
+                    self.scene.removeItem(self.current_rect)
+                    self.current_rect = None
+                    # 恢复正常模式
+                    self.set_exclude_mode(False)
+                else:
+                    # --- 正常标注 ---
+                    self.label_and_comment_dialog()
                 self.current_rect = None
 
             if self.moving or self.resizing:
@@ -338,6 +364,11 @@ class IMG_WIN(QWidget):
                         label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
 
                         for index, lbl in enumerate(label):
+                            # --- 检查标注是否应被排除 ---
+                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                                ymin[index]), float(xmax[index]), float(ymax[index])
+                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                                continue  # 跳过此标注
                             # 计算标注框在新缩放比例下的位置
                             x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                             y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
@@ -390,6 +421,11 @@ class IMG_WIN(QWidget):
                         label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
 
                         for index, lbl in enumerate(label):
+                            # --- 检查标注是否应被排除 ---
+                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                                ymin[index]), float(xmax[index]), float(ymax[index])
+                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                                continue  # 跳过此标注
                             # 计算标注框在新缩放比例下的位置
                             x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                             y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
@@ -459,6 +495,11 @@ class IMG_WIN(QWidget):
                         label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
 
                         for index, lbl in enumerate(label):
+                            # --- 检查标注是否应被排除 ---
+                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                                ymin[index]), float(xmax[index]), float(ymax[index])
+                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                                continue  # 跳过此标注
                             # 计算标注框在新缩放比例下的位置
                             x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                             y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
@@ -511,6 +552,11 @@ class IMG_WIN(QWidget):
                         label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
 
                         for index, lbl in enumerate(label):
+                            # --- 检查标注是否应被排除 ---
+                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                                ymin[index]), float(xmax[index]), float(ymax[index])
+                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                                continue  # 跳过此标注
                             # 计算标注框在新缩放比例下的位置
                             x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
                             y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
@@ -624,6 +670,155 @@ class IMG_WIN(QWidget):
     #     rect_items = self.get_rect_items()
     #     pixmapItem = self.get_pixmapItem()
     #     ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img)
+
+    def set_exclude_mode(self, enabled: bool):
+        """设置或取消“选择排除区域”模式"""
+        self.is_excluding_pixels = enabled
+        if enabled:
+            self.graphicsView.setCursor(Qt.CrossCursor)
+        else:
+            self.graphicsView.setCursor(Qt.ArrowCursor)
+
+    def load_exclude_config(self):
+        """从 config.json 加载排除区域"""
+        config_path = os.path.join('Sources', 'config.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # 确保坐标是数字
+                    self.exclude_rects = [
+                        [float(p) for p in rect]
+                        for rect in config.get('exclude_pix', [])
+                    ]
+            except (json.JSONDecodeError, IOError, ValueError) as e:
+                print(f"加载排除区域配置失败: {e}")
+                self.exclude_rects = []
+
+    def save_exclude_rect(self, rect: QRectF):
+        """将新的排除区域保存到 config.json"""
+        config_path = os.path.join('Sources', 'config.json')
+        os.makedirs('Sources', exist_ok=True)
+        config = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass  # 文件存在但为空或损坏，当作新文件处理
+
+        # 获取相对于图像原始尺寸的坐标
+        pixmap_pos = self.pixmapItem.pos()
+        x_min = (rect.left() - pixmap_pos.x()) / self.ratio
+        y_min = (rect.top() - pixmap_pos.y()) / self.ratio
+        x_max = (rect.right() - pixmap_pos.x()) / self.ratio
+        y_max = (rect.bottom() - pixmap_pos.y()) / self.ratio
+
+        new_rect_coords = [x_min, y_min, x_max, y_max]
+
+        if 'exclude_pix' not in config:
+            config['exclude_pix'] = []
+
+        config['exclude_pix'].append(new_rect_coords)
+
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4)
+            print(f"已保存新的排除区域: {new_rect_coords}")
+            self.load_exclude_config()  # 重新加载配置
+            # 重新加载所有标注框，应用排除逻辑
+            if self.rect_info_raw:
+                # 移除所有现有标注框
+                for item in self.rect_items:
+                    self.scene.removeItem(item)
+                self.rect_items.clear()
+
+                # 重新加载标注框
+                label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+                for index, lbl in enumerate(label):
+                    current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                        ymin[index]), float(xmax[index]), float(ymax[index])
+                    # 检查是否应被排除
+                    if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                        continue  # 跳过此标注
+
+                    # 重新计算在当前视图下的坐标并创建
+                    x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
+                    y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
+                    x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
+                    y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
+
+                    rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
+                                               self, label=lbl, comment=comment_pose[index])
+                    rect_item.radio_start = self.ratio
+                    self.scene.addItem(rect_item)
+                    self.rect_items.append(rect_item)
+
+                # 更新UI
+                self.update_rect_items(True)
+                self.scene.update()
+        except IOError as e:
+            print(f"保存排除区域配置失败: {e}")
+
+    def is_rect_excluded(self, xmin, ymin, xmax, ymax):
+        """检查一个标注框是否在任何排除区域内 (中心点判断)"""
+        # 仅当自动排除功能启用时，才进行检查
+        if not self.auto_exclude_enabled:
+            return False
+        rect_center_x = (xmin + xmax) / 2
+        rect_center_y = (ymin + ymax) / 2
+        for ex_rect in self.exclude_rects:
+            ex_xmin, ex_ymin, ex_xmax, ex_ymax = ex_rect
+            if ex_xmin <= rect_center_x <= ex_xmax and ex_ymin <= rect_center_y <= ex_ymax:
+                return True
+        return False
+
+    def set_auto_exclude_enabled(self, enabled: bool):
+        """设置是否启用自动排除功能"""
+        self.auto_exclude_enabled = enabled
+
+    def clear_and_refresh_exclusions(self):
+        """清空内存中的排除区域并刷新标注视图"""
+        self.exclude_rects.clear()
+        print("内存中的排除区域已清空。")
+        self.refresh_annotations()
+
+    def refresh_annotations(self):
+        """根据当前的排除设置，刷新所有标注框的可见性"""
+        if not self.rect_info_raw or self.pixmapItem is None:
+            return
+
+        # 移除所有现有标注框
+        for item in self.rect_items:
+            self.scene.removeItem(item)
+        self.rect_items.clear()
+
+        # 重新加载标注框
+        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+        for index, lbl in enumerate(label):
+            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
+                ymin[index]), float(xmax[index]), float(ymax[index])
+
+            # 检查是否应被排除
+            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
+                continue  # 跳过此标注
+
+            # 重新计算在当前视图下的坐标并创建
+            x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
+            y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
+            x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
+            y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
+
+            rect_item = CustomRectItem(QRectF(QPointF(x1, y1), QPointF(x2, y2)),
+                                       self, label=lbl, comment=comment_pose[index])
+            rect_item.radio_start = self.ratio
+            self.scene.addItem(rect_item)
+            self.rect_items.append(rect_item)
+
+        # 更新UI
+        self.update_rect_items(True)
+        self.scene.update()
+        print("标注框已根据排除设置刷新。")
 
 
 class CustomRectItem(QGraphicsRectItem):

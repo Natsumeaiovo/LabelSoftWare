@@ -1,0 +1,12 @@
+pyinstaller -F -w -i  Background.ico  Window.py -p DataProcess.py -p C:\Users\19446\Anaconda3\envs\qt\Lib\site-packages
+
+
+"""
+参数解释：
+-w:不带黑框
+-i Background.ico : .exe软件需要显示图标为Background.ico 图片
+Window.py：打包主程序
+-p DataProcess.py: 打包的第二个程序，打包的第二个文件前需要加上参数-p
+-p C:\Users\19446\Anaconda3\envs\qt\Lib\site-packages:就是步骤2中获得的PySide2库的打包，这样打包的话就不会报错显示没用PySide2库了，而且打包后.exe也不大。
+"""
+pyinstaller -F -w -i intecast.ico MainDcmLabel.py

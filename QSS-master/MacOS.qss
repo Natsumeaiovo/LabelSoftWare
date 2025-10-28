@@ -268,7 +268,7 @@ QMenuBar {
     background-color: #ececec;
 }
 QMenuBar::item {
-    color: #616161;
+    color: #000000;
     spacing: 3px;
     padding: 1px 4px;
     background-color: #ececec;
@@ -286,7 +286,7 @@ QMenu::item:selected {
     color: #3d3d3d;
 }
 QMenu::item {
-    color: #616161;;
+    color: #000000;
     background-color: #e0e0e0;
 }
 QTabWidget {

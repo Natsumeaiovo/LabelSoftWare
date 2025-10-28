@@ -11,6 +11,9 @@ Function of the program:
 
 import json
 import os
+import shutil
+import xml.etree.ElementTree as ET
+from collections import defaultdict
 
 import pydicom
 from PySide2 import QtCore
@@ -18,20 +21,22 @@ from PySide2 import QtGui
 from PySide2.QtCore import Signal, QObject, QThread, QTimer
 from PySide2.QtGui import QIcon
 from PySide2.QtUiTools import QUiLoader
-from PySide2.QtWidgets import QApplication, QMainWindow, QListWidgetItem, QListWidget, QWidget
+from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget
 from PySide2.QtWidgets import QFileDialog
+from PySide2.QtWidgets import QMessageBox
 
 from utils import DrawHist
+from utils import EnhanceImage
 from utils import SetValue
 from utils import ShowDCMName
 from utils import ShowImage
 from utils import ToXML5D0
 from utils import WindowImage
+from utils import XML_report
 from utils.DcmDealFdi5d5 import *
 from utils.QSSLoader import QSSLoader
 from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
-from utils import EnhanceImage
 
 
 # 保存图片临时信息（窗宽、窗位、是否反色）
@@ -184,7 +189,9 @@ class GUI(QMainWindow):
         self.img_trans_utils = DcmDealFdi5d5()  # 创建 DcmDealFdi5d5 类的实例
         self.ui = QUiLoader().load('UI/pic.ui')
         self.img = None
-        self.img_enhance = None
+        self.img_trans = None
+        self.img_enhanced = None
+        self.xml_path = ""
         self.folder_path = ""
         self.filePath = ""
         self.ongoing = False
@@ -205,12 +212,6 @@ class GUI(QMainWindow):
                                                  self.ui.window_width_label, self.ui.window_level_label,
                                                  self.ui.histogram)
         self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
-
-        # self.setCentralWidget(self.ui)
-        # # 将 MyGraphicsView 放入 graphicsView_2 的布局中
-        # self.graphics_view_layout = QVBoxLayout(self.ui.graphicsView_2)
-        # self.graphics_view = bbbbbbbb.MyGraphicsView(self.ui.graphicsView_2)
-        # self.graphics_view_layout.addWidget(self.graphics_view)
 
         """
         点击图片名 连接并传递一个QListWidgetItem 对象给 show_img 方法作为其参数。
@@ -259,10 +260,43 @@ class GUI(QMainWindow):
         self.auto_save_timer.timeout.connect(self.save_xml)
         self.ui.autoSaveButton.toggled.connect(self.auto_save_xml)
 
+        self.ui.radioButton_enhance.clicked.connect(self.window_image_main)
         self.ui.spinBox_1.valueChanged.connect(self.window_image_main)
         self.ui.spinBox_2.valueChanged.connect(self.window_image_main)
         self.ui.spinBox_3.valueChanged.connect(self.window_image_main)
-        self.ui.radioButton_enhance.clicked.connect(self.window_image_main)
+        self.ui.merge_anno.clicked.connect(self.merge_annotations)
+        self.ui.revoke_merge.clicked.connect(self.remove_merge_anno)
+        self.ui.auto_merge.toggled.connect(self.save_auto_merge_config)
+        self.ui.generate_report.clicked.connect(self.generate_report)
+        self.ui.save_cur_img.clicked.connect(self.save_cur_img)
+        self.ui.exclude_pix.clicked.connect(self.start_exclude_pixels_mode)
+        self.ui.auto_exclude_pix.toggled.connect(self.on_auto_exclude_toggled)
+        self.ui.clean_exclude_pix.clicked.connect(self.clear_exclude_regions)
+        self.ui.change_img_savepath.triggered.connect(
+            lambda: self.select_and_save_path('img_save_path', "选择图像保存位置")
+        )
+        self.ui.change_report_savepath.triggered.connect(
+            lambda: self.select_and_save_path('report_save_path', "选择报告保存位置")
+        )
+        self.load_config()
+
+    def load_config(self):
+        """在程序启动时加载配置"""
+        config_path = os.path.join('Sources', 'config.json')
+        auto_merge_state = False
+        auto_exclude_state = False  # 默认为不排除
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                auto_merge_state = config.get('autoMerge', False)
+                auto_exclude_state = config.get('autoExclude', False)  # 读取排除状态
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"加载配置文件 '{config_path}' 失败: {e}")
+
+        self.ui.auto_merge.setChecked(auto_merge_state)
+        self.ui.auto_exclude_pix.setChecked(auto_exclude_state)
+        self.img_win.set_auto_exclude_enabled(auto_exclude_state)  # 通知IMG_WIN
 
     def select_img(self):
         """
@@ -309,34 +343,45 @@ class GUI(QMainWindow):
 
         self.image_name_list.open_folder(directory)
         self.folder_path = directory
-        print("dire path: ", directory)
+        self.xml_path = self.folder_path + "-XML"
+        print("folder_path: ", directory)
 
-    def img_quick_trans(self, quick_trans_method):
+        # 如果auto_merge被勾选，则在选择图片后执行一次合并
+        if self.ui.auto_merge.isChecked():
+            self.merge_annotations()
+
+    def img_quick_trans(self, quick_trans_method, img_to_handle=None):
         """
         图像快速处理
         """
+        if img_to_handle is None:
+            img_to_handle = self.img
         print("快速处理：", quick_trans_method)
         if quick_trans_method == NONE or quick_trans_method is None:
             self.ui.none_dcm_label.setChecked(True)
-            self.img_enhance = None
+            self.img_trans = None
             self.quick_trans_method = None
         else:
             self.quick_trans_method = quick_trans_method
             # 如果反色没有勾选则使用对应的图像增强方法，否则在反色算法中增强，避免重复运算
-            if self.ui.reverseButton.isChecked() is not True:
-                self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, self.img)
+            # if self.ui.reverseButton.isChecked() is not True:
+            #     self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, img_to_handle)
+            #     img_to_handle = self.img_enhance\
+            self.img_trans = self.img_trans_utils.call_method(self.quick_trans_method, img_to_handle)
+            img_to_handle = self.img_trans
+        return img_to_handle
 
     def set_item_viewed(self, listWidget: QListWidget, file_name: str, manual_save: bool):
         """
         如果进行了手动保存，或者勾选了自动保存，那么查看图片时，将list对应item标记为已查看
         """
-        # 在传入的listWidget中查找对应项目
-        for i in range(listWidget.count()):
-            list_item = listWidget.item(i)
-            if list_item.text() == file_name:
-                if self.ui.autoSaveButton.isChecked() or manual_save:
+        if self.ui.autoSaveButton.isChecked() or manual_save:
+            # 在传入的listWidget中查找对应项目
+            for i in range(listWidget.count()):
+                list_item = listWidget.item(i)
+                if list_item.text() == file_name:
                     list_item.setIcon(QIcon('./Sources/viewed'))
-                break
+                    break
 
     def show_img(self, item=None, filePath=None, quick_trans_method=None):
         is_item_changed = False
@@ -346,8 +391,9 @@ class GUI(QMainWindow):
             quick_trans_method = None
             self.set_item_viewed(self.ui.listWidget_dcm_name, item.text(), False)
 
-        if quick_trans_method is not None:
-            self.img_quick_trans(quick_trans_method)
+        self.quick_trans_method = quick_trans_method
+        # self.img_quick_trans(quick_trans_method)
+
         # 如果传了item参数(图片)，那么更改filePath为item的地址，并且不变换slider
         if filePath is not None:
             is_item_changed = True
@@ -371,7 +417,7 @@ class GUI(QMainWindow):
                         read_img.seek(1)  # 跳到第二帧
                     read_img = np.array(read_img)
             else:
-                read_img = cv2.imread(self.filePath)
+                read_img = cv2.imdecode(np.fromfile(self.filePath, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
             # 检查是否需要将图像转换为灰度图
             print("read_img.shape:", len(read_img.shape))
             if len(read_img.shape) > 2:  # 如果有三个维度，则表示有多通道图像
@@ -385,7 +431,7 @@ class GUI(QMainWindow):
             self.clear = True
 
             # 读取并应用保存的窗宽、窗位和反色按钮状态信息
-            self.img_quick_trans(None)
+            self.img_quick_trans(quick_trans_method=NONE)
             image_info = load_img_tmp_info(self.filePath)
             if image_info:
                 self.ui.reverseButton.setChecked(image_info['reverse_checked'])
@@ -403,13 +449,12 @@ class GUI(QMainWindow):
         if self.ui.reverseButton.isChecked() is True:
             # 如果item改变了
             self.show_img_reverse(NOT_CHANGE_SLIDER, is_item_changed)
-            return
 
-        if self.img_enhance is None:
-            self.window_image_main()
-        self.img_win.addScenes(self.img_enhance if self.img_enhance is not None else self.img, self.filePath, True)
+        # if self.img_enhance is None:
+        #     self.window_image_main(quick_trans_method)
+        self.img_win.addScenes(self.img_trans if self.img_trans is not None else self.img, self.filePath, True)
+        self.window_image_main()
 
-        # self.img_win.addScenes(self.img_enhance if self.img_enhance is not None else self.img, self.filePath, True)
         # 如果没有反色，那么在这里绘制histogram
         if self.ui.reverseButton.isChecked() is not True:
             DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
@@ -436,12 +481,13 @@ class GUI(QMainWindow):
             self.ui.enhance_label_2.setText(f'对比区域:{self.ui.spinBox_2.value()}')
             self.ui.enhance_label_3.setText(f'图像锐化:{self.ui.spinBox_3.value()}')
 
+            # 如果图像增强按钮按下了
             if self.ui.radioButton_enhance.isChecked() is True:
                 # array = EnhanceImage.high_frequency_emphasis(array, self.ui.spinBox_3.value(),
                 #                                  self.ui.spinBox_4.value(),self.ui.spinBox_5.value())
                 array = cv2.GaussianBlur(array, (13, 13), 0)
                 array = cv2.addWeighted(array_orl, self.ui.spinBox_3.value(), array, 1 - self.ui.spinBox_3.value(), 0)
-            # 当调整图片窗宽窗位时，会不断创建新的子线程
+            # 不断地创建新的子线程
             self.thread = QThread(self)
             # print("创建一个子线程")
             # 创建 Worker 实例，并传递滑块的值
@@ -462,12 +508,14 @@ class GUI(QMainWindow):
         if self.ui.spinBox_1.value() != 0:
             if self.ui.radioButton_enhance.isChecked() is True:
                 array = EnhanceImage.apply_clahe(array, self.ui.spinBox_1.value(),
-                                             (int(self.ui.spinBox_2.value()), int(self.ui.spinBox_2.value())))
+                                                 (int(self.ui.spinBox_2.value()), int(self.ui.spinBox_2.value())))
             # array = EnhanceImage.unsharp_mask(array, self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
             # array = EnhanceImage.apply_hef(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
             # array = EnhanceImage.clahe(array, int(self.ui.spinBox_1.value()), int(self.ui.spinBox_2.value()),
             #                                int(self.ui.spinBox_3.value()))
             # array = EnhanceImage.rawimg_enhance(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
+        array = self.img_quick_trans(self.quick_trans_method, array)
+        self.img_enhanced = array
         self.img_win.addScenes(array, self.filePath, False)
         # self.ongoing = False
 
@@ -487,24 +535,12 @@ class GUI(QMainWindow):
                 self.ui.max_slider.setValue(max_val - self.ui.min_slider.value())
                 self.ui.min_slider.setValue(max_val - pre_max_slider_value)
                 self.window_image_main()
-                # 如果有图片增强
-                if self.quick_trans_method is not None:
-                    self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, self.img)
-                    self.worker.finished.connect(
-                        lambda: self.img_win.addScenes(self.img_enhance, self.filePath, False))
 
             # 反色按钮已选中情况下，进行show_img调用(切换增强算法，切换图片)
             else:
                 # 如果切换了照片，那么需要对self.img进行反色
                 if is_item_changed:
                     self.img = max_val - self.img
-                # 如果有图片增强
-                if self.quick_trans_method is not None:
-                    self.img_enhance = self.img_trans_utils.call_method(self.quick_trans_method, self.img)
-                    self.img_win.addScenes(self.img_enhance, self.filePath, clear=is_item_changed)
-                else:
-                    self.img_win.addScenes(self.img, self.filePath, clear=is_item_changed)
-                    self.window_image_main()
             DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
@@ -550,6 +586,460 @@ class GUI(QMainWindow):
         # 打开编辑窗口
         self.edit_window = EditWindow()
         self.edit_window.show()
+
+    def merge_annotations(self):
+        """
+        合并XML标注文件中的标注框。
+        1. 备份原始XML文件到meta子目录。
+        2. 遍历所有XML，对其中具有相同名称（或属于特殊合并组）且位置相近的<object>进行合并。
+        特殊规则:
+        - "SK" 和 "SS" 视为一组。
+        - "缩孔" 和 "缩松" 视为一组。
+        """
+        if not self.xml_path or not os.path.isdir(self.xml_path):
+            print("XML路径无效，请先打开一个文件以确定路径。")
+            return
+
+        meta_path = os.path.join(self.xml_path, 'meta')
+
+        # 1. 备份原始XML文件
+        if os.path.exists(meta_path):
+            print("Meta目录已存在，跳过合并操作。")
+            return
+        else:
+            print(f"创建备份目录: {meta_path}")
+            os.makedirs(meta_path)
+            xml_files = [f for f in os.listdir(self.xml_path) if f.endswith('.xml')]
+            for xml_file in xml_files:
+                shutil.copy2(os.path.join(self.xml_path, xml_file), meta_path)
+            print(f"已备份 {len(xml_files)} 个XML文件。")
+
+        # 2. 遍历并合并XML文件中的标注
+        print("开始合并标注...")
+        for filename in os.listdir(self.xml_path):
+            if not filename.endswith('.xml'):
+                continue
+
+            xml_file_path = os.path.join(self.xml_path, filename)
+            try:
+                tree = ET.parse(xml_file_path)
+                root = tree.getroot()
+
+                size_node = root.find('size')
+                img_width = int(size_node.find('width').text)
+                img_height = int(size_node.find('height').text)
+
+                # 按<name>对<object>进行分组，并处理特殊合并规则
+                objects_by_group = defaultdict(list)
+                for obj in root.findall('object'):
+                    name = obj.find('name').text
+                    if name in ["SK", "SS"]:
+                        group_key = "SK_SS_GROUP"
+                    elif name in ["缩孔", "缩松"]:
+                        group_key = "SHRINKAGE_GROUP"
+                    else:
+                        group_key = name
+                    objects_by_group[group_key].append(obj)
+
+                # 对每个分组进行合并处理
+                for group_key, objects in objects_by_group.items():
+                    if len(objects) < 2:
+                        continue
+
+                    # 使用字典追踪每个合并框包含的原始名称
+                    constituent_names = {id(obj): [obj.find('name').text] for obj in objects}
+
+                    merged = True
+                    while merged:
+                        merged = False
+                        i = 0
+                        while i < len(objects):
+                            j = i + 1
+                            while j < len(objects):
+                                obj1 = objects[i]
+                                obj2 = objects[j]
+
+                                bndbox1 = obj1.find('bndbox')
+                                bndbox2 = obj2.find('bndbox')
+
+                                xmin1, ymin1 = int(float(bndbox1.find('xmin').text)), int(
+                                    float(bndbox1.find('ymin').text))
+                                xmax1, ymax1 = int(float(bndbox1.find('xmax').text)), int(
+                                    float(bndbox1.find('ymax').text))
+                                xmin2, ymin2 = int(float(bndbox2.find('xmin').text)), int(
+                                    float(bndbox2.find('ymin').text))
+                                xmax2, ymax2 = int(float(bndbox2.find('xmax').text)), int(
+                                    float(bndbox2.find('ymax').text))
+
+                                horizontal_gap = max(0, max(xmin1, xmin2) - min(xmax1, xmax2))
+                                vertical_gap = max(0, max(ymin1, ymin2) - min(ymax1, ymax2))
+
+                                if horizontal_gap < img_width * 0.05 and vertical_gap < img_height * 0.05:
+                                    # 合并坐标
+                                    bndbox1.find('xmin').text = str(min(xmin1, xmin2))
+                                    bndbox1.find('ymin').text = str(min(ymin1, ymin2))
+                                    bndbox1.find('xmax').text = str(max(xmax1, xmax2))
+                                    bndbox1.find('ymax').text = str(max(ymax1, ymax2))
+
+                                    # 合并原始名称列表
+                                    obj1_id, obj2_id = id(obj1), id(obj2)
+                                    constituent_names[obj1_id].extend(constituent_names[obj2_id])
+                                    del constituent_names[obj2_id]
+
+                                    # 根据合并后的名称列表，决定obj1的新名称
+                                    if group_key == "SK_SS_GROUP":
+                                        count_sk = constituent_names[obj1_id].count("SK")
+                                        count_ss = len(constituent_names[obj1_id]) - count_sk
+                                        obj1.find('name').text = "SK" if count_sk >= count_ss else "SS"
+                                    elif group_key == "SHRINKAGE_GROUP":
+                                        count_suokong = constituent_names[obj1_id].count("缩孔")
+                                        count_suosong = len(constituent_names[obj1_id]) - count_suokong
+                                        obj1.find('name').text = "缩孔" if count_suokong >= count_suosong else "缩松"
+
+                                    # 从XML树和列表中移除obj2
+                                    root.remove(obj2)
+                                    objects.pop(j)
+                                    merged = True
+                                else:
+                                    j += 1
+                            i += 1
+
+                # 将修改后的树写回原文件
+                tree.write(xml_file_path, encoding='utf-8', xml_declaration=True)
+
+            except Exception as e:
+                print(f"处理文件 {filename} 时出错: {e}")
+
+        print("XML标注合并完成")
+        self.show_img(filePath=self.filePath)
+
+    def remove_merge_anno(self):
+        """
+        撤销标注合并操作。
+        检查是否存在meta备份目录。如果存在，则用meta目录中的文件覆盖当前XML文件。删除meta目录。
+        """
+        if not self.xml_path or not os.path.isdir(self.xml_path):
+            return
+
+        meta_path = os.path.join(self.xml_path, 'meta')
+
+        # 1. 检查meta目录是否存在
+        if not os.path.exists(meta_path):
+            print("未找到备份目录 'meta'，无需执行撤销操作。")
+            return
+
+        try:
+            print("开始撤销合并操作...")
+            # 2. 删除当前XML路径下的所有XML文件
+            for filename in os.listdir(self.xml_path):
+                if filename.endswith('.xml'):
+                    os.remove(os.path.join(self.xml_path, filename))
+            print("已删除当前目录的XML文件。")
+
+            # 3. 将meta目录中的所有文件复制回XML路径
+            for filename in os.listdir(meta_path):
+                shutil.copy2(os.path.join(meta_path, filename), self.xml_path)
+            print("已从备份恢复XML文件。")
+
+            # 4. 删除meta目录
+            shutil.rmtree(meta_path)
+            print("已删除备份目录 'meta'。")
+
+            print("撤销合并完成。")
+            # 刷新当前显示的图片和标注
+            self.show_img(filePath=self.filePath)
+
+        except Exception as e:
+            print(f"撤销合并时出错: {e}")
+
+    def save_auto_merge_config(self, checked):
+        """当auto_merge按钮状态改变时，保存配置到JSON文件。"""
+        config_dir = 'Sources'
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, 'config.json')
+
+        config = {}
+        # 先读取现有配置，以防覆盖其他设置
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass  # 如果文件损坏或为空，则创建一个新的
+
+        config['autoMerge'] = checked
+
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+        except IOError as e:
+            print(f"保存配置文件 '{config_path}' 失败: {e}")
+
+    def on_auto_exclude_toggled(self, checked):
+        """当 auto_exclude_pix 按钮状态改变时，保存配置并刷新视图"""
+        config_dir = 'Sources'
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, 'config.json')
+
+        config = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        config['autoExclude'] = checked
+
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+        except IOError as e:
+            print(f"保存配置文件 '{config_path}' 失败: {e}")
+
+        # 更新 IMG_WIN 的状态并刷新标注
+        self.img_win.set_auto_exclude_enabled(checked)
+        self.img_win.refresh_annotations()
+
+    def clear_exclude_regions(self):
+        """清空配置文件和内存中的所有排除区域，并刷新视图"""
+        config_path = os.path.join('Sources', 'config.json')
+        config = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass  # 如果文件损坏或为空，则忽略
+
+        # 清空排除区域列表
+        if 'exclude_pix' in config:
+            config['exclude_pix'] = []
+
+        # 写回配置文件
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4)
+            print("配置文件中的排除区域已清空。")
+        except IOError as e:
+            print(f"保存配置文件失败: {e}")
+            return
+
+        # 通知 IMG_WIN 更新其内部状态并刷新标注
+        self.img_win.clear_and_refresh_exclusions()
+
+    def select_and_save_path(self, config_key, dialog_title):
+        """
+        打开目录选择对话框，并将选择的路径保存到 config.json 文件中。
+
+        :param config_key: 在JSON文件中用于保存路径的键名 (例如, 'img_save_path')。
+        :param dialog_title: 目录选择对话框的标题。
+        """
+        initial_dir = os.getcwd()  # 默认使用当前工作目录
+        config_path = os.path.join('Sources', 'config.json')
+        # 打开目录选择对话框
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                # 如果配置中有对应的路径且不为空，则使用该路径作为起始目录
+                configured_path = config.get(config_key)
+                if configured_path and os.path.isdir(configured_path):
+                    initial_dir = configured_path
+            except (json.JSONDecodeError, IOError):
+                pass  # 如果配置文件读取失败，使用默认的当前工作目录
+
+        # 打开目录选择对话框，使用initial_dir作为起始目录
+        selected_dir = QFileDialog.getExistingDirectory(
+            self.ui,
+            dialog_title,
+            initial_dir  # 使用配置文件中的目录或当前工作目录作为起始目录
+        )
+
+        # 如果用户选择了目录
+        if selected_dir:
+            config_dir = 'Sources'
+            os.makedirs(config_dir, exist_ok=True)
+            config_path = os.path.join(config_dir, 'config.json')
+
+            config = {}
+            # 首先读取现有配置，以防覆盖其他设置
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass  # 如果文件损坏或为空，则创建一个新的
+
+            # 更新或添加路径配置
+            config[config_key] = selected_dir
+
+            # 将更新后的配置写回文件
+            try:
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4)
+                print(f"配置已更新: {config_key} = {selected_dir}")
+                QMessageBox.information(self.ui, "保存成功", f"{dialog_title}已更新为:\n{selected_dir}")
+            except IOError as e:
+                print(f"保存配置文件 '{config_path}' 失败: {e}")
+                QMessageBox.warning(self.ui, "保存失败", f"无法保存路径配置: {e}")
+
+    def generate_report(self):
+        """
+        生成缺陷报告。如果已配置报告路径，则直接使用；否则，提示用户选择并保存路径。
+        """
+        if not self.xml_path or not os.path.isdir(self.xml_path):
+            QMessageBox.warning(self.ui, "路径无效", "XML路径无效，请先打开一个文件以确定路径。")
+            return
+
+        config_dir = 'Sources'
+        config_path = os.path.join(config_dir, 'config.json')
+        config = {}
+        save_dir = None
+
+        # 1. 检查配置文件中是否存在有效的报告保存路径
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                path_from_config = config.get('report_save_path')
+                if path_from_config and os.path.isdir(path_from_config):
+                    save_dir = path_from_config
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        # 2. 如果路径未配置或无效，则弹出对话框让用户选择
+        if not save_dir:
+            selected_dir = QFileDialog.getExistingDirectory(
+                self.ui,
+                "选择缺陷报告保存位置",
+                self.folder_path  # 使用当前图片目录作为默认起始位置
+            )
+
+            if not selected_dir:
+                QMessageBox.information(self.ui, "操作取消", "未选择报告保存位置，已取消生成报告。")
+                return
+
+            save_dir = selected_dir
+            # 将新选择的路径保存回 config.json
+            config['report_save_path'] = save_dir
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4)
+                print(f"报告保存路径已配置并保存: {save_dir}")
+            except IOError as e:
+                QMessageBox.warning(self.ui, "保存配置失败", f"无法保存报告路径配置: {e}")
+                # 即使保存失败，本次依然继续生成报告
+
+        # 3. 使用确定的 save_dir 生成报告
+        if save_dir:
+            output_excel_path = os.path.join(save_dir, "output.xlsx")
+
+            try:
+                XML_report.process_xml_folder(
+                    folder_path=self.xml_path,
+                    output_excel=output_excel_path
+                )
+                QMessageBox.information(self.ui, "成功", f"报告已成功生成并保存至:\n{output_excel_path}")
+                os.startfile(save_dir)
+            except Exception as e:
+                print(f"生成报告时发生错误: {e}")
+
+    def save_cur_img(self):
+        """
+        保存当前显示的增强后图像为JPG文件。
+        如果已配置图像保存路径，则直接使用；否则，提示用户选择并保存路径。
+        """
+        # 1. 检查是否有可保存的图像
+        if self.img_enhanced is None or not isinstance(self.img_enhanced, np.ndarray):
+            QMessageBox.warning(self.ui, "无法保存", "当前没有可供保存的图像。\n请先加载并处理一张图片。")
+            return
+        if not self.filePath:
+            QMessageBox.warning(self.ui, "无法保存", "未加载任何文件，无法确定文件名。")
+            return
+
+        config_dir = 'Sources'
+        config_path = os.path.join(config_dir, 'config.json')
+        config = {}
+        save_dir = None
+
+        # 2. 检查配置文件中是否存在有效的图像保存路径
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                path_from_config = config.get('img_save_path')
+                if path_from_config and os.path.isdir(path_from_config):
+                    save_dir = path_from_config
+            except (json.JSONDecodeError, IOError):
+                pass  # 配置文件读取失败，将提示用户选择
+
+        # 3. 如果路径未配置或无效，则弹出对话框让用户选择
+        if not save_dir:
+            default_path = self.folder_path if self.folder_path and os.path.isdir(self.folder_path) else os.getcwd()
+            selected_dir = QFileDialog.getExistingDirectory(
+                self.ui,
+                "选择图像保存位置",
+                default_path
+            )
+
+            if not selected_dir:
+                QMessageBox.information(self.ui, "操作取消", "未选择保存位置，已取消保存。")
+                return
+
+            save_dir = selected_dir
+            # 将新选择的路径保存回 config.json
+            config['img_save_path'] = save_dir
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4)
+                print(f"图像保存路径已配置并保存: {save_dir}")
+            except IOError as e:
+                QMessageBox.warning(self.ui, "保存配置失败", f"无法保存图像路径配置: {e}")
+
+        # 4. 确定文件名并保存图像
+        if save_dir:
+            base_name = os.path.basename(self.filePath)
+            file_name_without_ext = os.path.splitext(base_name)[0]
+            output_file_name = f"{file_name_without_ext}.jpg"
+            full_save_path = os.path.join(save_dir, output_file_name)
+            counter = 1
+            while os.path.exists(full_save_path):
+                output_file_name = f"{file_name_without_ext}({counter}).jpg"
+                full_save_path = os.path.join(save_dir, output_file_name)
+                counter += 1
+            try:
+                # cv2.imencode支持中文路径
+                is_success, buffer = cv2.imencode(".jpg", self.img_enhanced)
+                if is_success:
+                    with open(full_save_path, 'wb') as f:
+                        f.write(buffer)
+                    QMessageBox.information(self.ui, "保存成功", f"图像已成功保存至:\n{full_save_path}")
+                    print(f"图像已保存: {full_save_path}")
+                else:
+                    raise IOError("cv2.imencode failed")
+            except Exception as e:
+                print(f"保存图像时发生错误: {e}")
+
+    def start_exclude_pixels_mode(self):
+        """
+        选择要排除的坏点区域
+        """
+        if self.img is None:
+            QMessageBox.warning(self.ui, "提示", "请先加载一张图片。")
+            return
+
+        # 1. 弹出一个对话框
+        QMessageBox.information(
+            self.ui,
+            "选择排除区域",
+            "请在图像上拖动鼠标右键绘制一个矩形，以定义要排除的坏点区域。"
+        )
+
+        # 2. 设置 IMG_WIN 进入排除模式
+        self.img_win.set_exclude_mode(True)
 
 
 if __name__ == '__main__':
