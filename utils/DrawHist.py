@@ -27,9 +27,11 @@ def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=F
         # 反色时可能需要调整窗口范围
         window_left_adjusted = min(window_left, pixel_array.min())
         window_right_adjusted = max(window_right, pixel_array.max())
-        hist_range = (window_left_adjusted, window_right_adjusted)
+        hist_range = (65535-window_right, 65535-window_left)
     else:
         hist_range = (window_left, window_right)
+
+    print("直方图范围", hist_range)
 
     # 绘制直方图
     histogram, bins = np.histogram(pixel_array.flatten(), bins=num_bins, range=hist_range)

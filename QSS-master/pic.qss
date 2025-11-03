@@ -1,0 +1,141 @@
+/* 全局样式 - 提升文字对比度 */
+QWidget {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    color: #F0F0F0; /* 更亮的文字色，提升对比度 */
+    background-color: #1A202C;
+}
+
+/* 解决QListWidget文字不可见问题 */
+QListWidget {
+    background-color: #1A202C;
+    border: 1px solid #2D3748;
+    border-radius: 5px;
+    padding: 3px;
+}
+
+/* 列表项强制设置文字色，确保与背景对比 */
+QListWidget::item {
+    color: #F0F0F0; /* 明确文字颜色 */
+    background-color: transparent; /* 继承父控件背景 */
+    padding: 5px 8px;
+    border-radius: 3px;
+}
+
+QListWidget::item:hover {
+    background-color: #2D3748;
+    color: #F0F0F0; /*  hover时文字更亮 */
+}
+
+QListWidget::item:selected {
+    background-color: #2B6CB0;
+    color: #FFFFFF; /* 选中时文字纯白，确保可见 */
+}
+
+/* 解决QLabel直方图消失问题 
+   （避免样式覆盖QLabel的绘图区域，保持背景透明） */
+QLabel {
+    background-color: transparent; /* 关键：不设置固定背景色，避免覆盖绘制内容 */
+    color: #F0F0F0; /* 文字色保持可见 */
+}
+
+/* 仅图像显示区的QLabel设置背景（如果需要） */
+QLabel#imageDisplay {
+    background-color: #2D3748; /* 仅针对指定名称的图像显示Label */
+    border: 1px solid #4A5568;
+    border-radius: 6px;
+    margin: 10px;
+    padding: 0;
+}
+
+/* 工具栏与按钮（保持之前的暗色调） */
+QToolBar {
+    background-color: #1F2937;
+    border: none;
+    border-bottom: 1px solid #2D3748;
+    spacing: 6px;
+    padding: 8px 12px;
+}
+
+QToolBar QToolButton {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    background-color: #1A202C;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+QToolBar QToolButton:hover {
+    background-color: #2D3748;
+    border: 1px solid #4A90E2;
+}
+
+QToolBar QToolButton:pressed,
+QToolBar QToolButton:checked {
+    background-color: #2B6CB0;
+    border: 1px solid #2563EB;
+}
+
+/* 按钮样式 */
+QPushButton {
+    background-color: #2B6CB0;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    transition: all 0.2s ease;
+}
+
+QPushButton:hover {
+    background-color: #2563EB;
+}
+
+QPushButton:pressed {
+    background-color: #1A365D;
+}
+
+/* 滑块样式 */
+QSlider::groove:horizontal {
+    height: 6px;
+    background-color: #2D3748;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    width: 18px;
+    height: 18px;
+    margin: -6px 0;
+    background-color: #2B6CB0;
+    border-radius: 9px;
+    border: 1px solid #1A365D;
+}
+
+/* 其他控件保持兼容性 */
+QTreeWidget, QTableWidget {
+    background-color: #1A202C;
+    border: 1px solid #2D3748;
+    border-radius: 5px;
+    padding: 3px;
+}
+
+QTreeWidget::item, QTableWidget::item {
+    color: #F0F0F0;
+    padding: 5px 8px;
+}
+
+QTreeWidget::item:selected, QTableWidget::item:selected {
+    background-color: #2B6CB0;
+    color: white;
+}
+
+QLineEdit, QSpinBox, QDoubleSpinBox {
+    background-color: #1A202C;
+    border: 1px solid #2D3748;
+    color: #F0F0F0;
+    padding: 5px 8px;
+}
+
+QLineEdit:focus, QSpinBox:focus {
+    border-color: #2B6CB0;
+}

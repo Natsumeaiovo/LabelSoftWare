@@ -28,11 +28,12 @@ class DoubleSliderLabel(QLabel):
         self.debounce_timer.timeout.connect(self.print_values)
         # self.histogram = histogram
 
-    def set_values(self, min_slider_value, max_slider_value, min_val, max_val):
+    def set_values(self, min_slider_value, max_slider_value, min_val, max_val, reverseButton):
         self.min_slider_value = min_slider_value
         self.max_slider_value = max_slider_value
         self.max_val = max_val
         self.min_val = min_val
+        self.reverseButton = reverseButton
         self.update()
         self.debounce_timer.start(300)
 
@@ -53,6 +54,7 @@ class DoubleSliderLabel(QLabel):
         # 根据最小值和最大值计算竖线的位置
         min_x = int(width * ((self.min_slider_value - self.min_val) / float(self.max_val - self.min_val)))
         max_x = int(width * ((self.max_slider_value - self.min_val) / float(self.max_val - self.min_val)))
+
 
         # 设置笔刷和画笔
         pen = QPen(QColor(0, 0, 0), 2)
@@ -75,7 +77,7 @@ class DoubleSliderLabel(QLabel):
 
 class DoubleSlider(QWidget):
     def __init__(self, min_slider, max_slider, window_width_slider, window_level_slider, min_label, max_label,
-                 window_width_label, window_level_label, histogram):
+                 window_width_label, window_level_label, histogram, reverseButton):
         super().__init__()
         self.min_slider = min_slider
         self.max_slider = max_slider
@@ -86,6 +88,7 @@ class DoubleSlider(QWidget):
         self.window_width_label = window_width_label
         self.window_level_label = window_level_label
         self.histogram = histogram
+        self.reverseButton = reverseButton
 
         # 灰度最小值和最大值slider值变化信号连接到update_values_from_min_max槽
         self.min_slider.valueChanged.connect(self.update_values_from_min_max)
@@ -134,7 +137,7 @@ class DoubleSlider(QWidget):
         self.window_level_label.setText(f'窗位: {window_level}')
         max_val = self.min_slider.maximum()
         min_val = self.min_slider.minimum()
-        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val)
+        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val, self.reverseButton)
 
 
     def update_values_from_width_level(self):
@@ -170,4 +173,4 @@ class DoubleSlider(QWidget):
         self.window_width_label.setText(f'窗宽: {window_width}')
         self.window_level_label.setText(f'窗位: {window_level}')
 
-        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val)
+        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val, self.reverseButton)

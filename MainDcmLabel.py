@@ -11,9 +11,6 @@ Function of the program:
 
 import json
 import os
-import shutil
-import xml.etree.ElementTree as ET
-from collections import defaultdict
 
 import pydicom
 from PySide2 import QtCore
@@ -21,7 +18,7 @@ from PySide2 import QtGui
 from PySide2.QtCore import Signal, QObject, QThread, QTimer
 from PySide2.QtGui import QIcon
 from PySide2.QtUiTools import QUiLoader
-from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget, QAbstractSlider
+from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget
 from PySide2.QtWidgets import QFileDialog
 from PySide2.QtWidgets import QMessageBox
 
@@ -37,7 +34,7 @@ from utils.DcmDealFdi5d5 import *
 from utils.QSSLoader import QSSLoader
 from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
-
+from Sources import sources_lable
 
 # 保存图片临时信息（窗宽、窗位、是否反色）
 def save_img_tmp_info(image_path, window_width, window_level, reverse_checked):
@@ -203,14 +200,14 @@ class GUI(QMainWindow):
         # self.graphics_view_layout.addWidget(self.graphic)
         # self.graphics_view_layout.addWidget(self.graphic)
 
-        self.ui.pushButton.clicked.connect(self.select_img)
-        self.ui.pushButton_save_xml.clicked.connect(self.save_xml)
-        self.ui.updateLabel.clicked.connect(self.update_label)
+        self.ui.pushButton.triggered.connect(self.select_img)
+        self.ui.pushButton_save_xml.triggered.connect(self.save_xml)
+        self.ui.updateLabel.triggered.connect(self.update_label)
 
         self.value_ww_wc = SetValue.DoubleSlider(self.ui.min_slider, self.ui.max_slider, self.ui.window_width_slider,
                                                  self.ui.window_level_slider, self.ui.min_label, self.ui.max_label,
                                                  self.ui.window_width_label, self.ui.window_level_label,
-                                                 self.ui.histogram)
+                                                 self.ui.histogram, self.ui.reverseButton)
 
         self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
 
@@ -266,11 +263,11 @@ class GUI(QMainWindow):
         self.ui.spinBox_2.valueChanged.connect(self.window_image_main)
         self.ui.spinBox_3.valueChanged.connect(self.window_image_main)
         self.ui.merge_anno.clicked.connect(self.merge_annotations)
-        self.ui.generate_report.clicked.connect(self.generate_report)
-        self.ui.save_cur_img.clicked.connect(self.save_cur_img)
-        self.ui.exclude_pix.clicked.connect(self.start_exclude_pixels_mode)
+        self.ui.generate_report.triggered.connect(self.generate_report)
+        self.ui.save_cur_img.triggered.connect(self.save_cur_img)
+        self.ui.exclude_pix.triggered.connect(self.start_exclude_pixels_mode)
         self.ui.auto_exclude_pix.toggled.connect(self.on_auto_exclude_toggled)
-        self.ui.clean_exclude_pix.clicked.connect(self.clear_exclude_regions)
+        self.ui.clean_exclude_pix.triggered.connect(self.clear_exclude_regions)
         self.ui.change_img_savepath.triggered.connect(
             lambda: self.select_and_save_path('img_save_path', "选择图像保存位置")
         )
@@ -430,16 +427,25 @@ class GUI(QMainWindow):
             image_info = load_img_tmp_info(self.filePath)
             self.window_left = self.img.min()
             self.window_right = self.img.max()
-            self.ui.min_slider.setRange(self.img.min(), self.img.max())
-            self.ui.max_slider.setRange(self.img.min(), self.img.max())
-            self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
-            self.ui.window_level_slider.setRange(self.img.min(), self.img.max())
+
+            # 如果反色了
+            if self.ui.reverseButton.isChecked() is True:
+                # 如果item改变了
+                self.ui.min_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
+                self.ui.max_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
+                self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
+                self.ui.window_level_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
+            else:
+                self.ui.min_slider.setRange(self.img.min(), self.img.max())
+                self.ui.max_slider.setRange(self.img.min(), self.img.max())
+                self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
+                self.ui.window_level_slider.setRange(self.img.min(), self.img.max())
+
             if image_info:
                 self.ui.reverseButton.setChecked(image_info['reverse_checked'])
                 self.ui.window_width_slider.setValue(image_info['window_width'])
                 self.ui.window_level_slider.setValue(image_info['window_level'])
             else:
-
                 if self.ui.reverseButton.isChecked():
                     self.ui.min_slider.setValue(max_val - self.img.max())
                     self.ui.max_slider.setValue(max_val - self.img.min())
@@ -520,7 +526,7 @@ class GUI(QMainWindow):
             # array = EnhanceImage.rawimg_enhance(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
         array = self.img_quick_trans(self.quick_trans_method, array)
         self.img_enhanced = array
-        self.img_win.addScenes(array, self.filePath, False)
+        self.img_win.addScenes(array, self.filePath, False, self.ui.merge_anno.isChecked())
         # self.ongoing = False
 
     # 图像正反色处理，修改了img为其反色，重新绘制了灰度直方图，根据参数更新slider的值
@@ -535,9 +541,17 @@ class GUI(QMainWindow):
             if isChangeSlider == CHANGE_SLIDER:
                 # 将self.img的反色传给reverse_img，重新绘制灰度直方图
                 pre_max_slider_value = self.ui.max_slider.value()
+                pre_min_slider_value = self.ui.min_slider.value()
                 self.img = max_val - self.img
-                self.ui.max_slider.setValue(max_val - self.ui.min_slider.value())
+
+                self.ui.min_slider.setRange(self.img.min(), self.img.max())
+                self.ui.max_slider.setRange(self.img.min(), self.img.max())
+                self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
+                self.ui.window_level_slider.setRange(self.img.min(), self.img.max())
+
+                self.ui.max_slider.setValue(max_val - pre_min_slider_value)
                 self.ui.min_slider.setValue(max_val - pre_max_slider_value)
+
                 self.window_image_main()
 
             # 反色按钮已选中情况下，进行show_img调用(切换增强算法，切换图片)
@@ -551,6 +565,8 @@ class GUI(QMainWindow):
 
     # 保存标注
     def save_xml(self):
+        if self.ui.merge_anno.isChecked():
+            return
         # 检查img_win中的脏标记，如果没有变化就不保存
         if not self.img_win.is_dirty and self.auto_save_timer.isActive():
             return
@@ -573,6 +589,8 @@ class GUI(QMainWindow):
         self.img_win.set_dirty(False)
 
     def auto_save_xml(self, checked):
+        if self.ui.merge_anno.isChecked():
+            return
         if checked:
             # 启动定时器前，确保初始状态是干净的
             self.img_win.set_dirty(False)
@@ -868,8 +886,9 @@ if __name__ == '__main__':
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     app = QApplication([])
     My_ui = GUI()
-    style_file = 'QSS-master/MacOS.qss'
-    # style_file = 'QSS-master/MaterialDark.qss'
+    # style_file = 'QSS-master/MacOS.qss'
+    # style_file = 'QSS-master/pic.qss'
+    style_file = 'QSS-master/MaterialDark.qss'
     # style_file = 'QSS-master/ManjaroMix.qss'
     # style_file = 'QSS-master/Ubuntu.qss'
     # style_file = 'QSS-master/Aqua.qss'

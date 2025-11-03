@@ -34,6 +34,7 @@ class IMG_WIN(QWidget):
         self.img = None
         self.graphicsView = graphicsView
         self.listWidget = listWidget
+        self.is_merge = None
 
         self.graphicsView.setStyleSheet("padding: 0px; border: 0px;")  # 内边距和边界去除
         self.scene = QtWidgets.QGraphicsScene(self)
@@ -158,6 +159,7 @@ class IMG_WIN(QWidget):
     def addScenes(self, img, path, clear: bool, merge=False):  # 绘制图形
         # 设置鼠标焦点到图形视图上
         self.graphicsView.setFocus()
+        self.is_merge = merge
         # self.org = img
         self.img = img
         self.file_path = path
@@ -295,6 +297,8 @@ class IMG_WIN(QWidget):
     def scene_MousePressEvent(self, event):
         # 处理中键点击 - 直接传递给下层项目
         if event.button() == Qt.MiddleButton:
+            if self.is_merge:
+                return
             item = self.scene.itemAt(event.scenePos(), self.graphicsView.transform())
             if isinstance(item, CustomRectItem):
                 # 直接调用项目的中键菜单方法
@@ -307,6 +311,8 @@ class IMG_WIN(QWidget):
 
         # if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
         if event.button() == Qt.RightButton:    # 如果按下鼠标右键
+            if self.is_merge:
+                return
             item = self.graphicsView.itemAt(event.scenePos().toPoint())
             # 如果鼠标右键在标注框上
             if isinstance(item, CustomRectItem):
