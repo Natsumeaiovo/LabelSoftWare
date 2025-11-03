@@ -18,22 +18,26 @@ from PySide2.QtCore import QTimer
 class DoubleSliderLabel(QLabel):
     def __init__(self, *args, **kwargs):
         super(DoubleSliderLabel, self).__init__(*args, **kwargs)
-        self.min_value = 0
-        self.max_value = 65535
+        self.min_slider_value = 0
+        self.min_val = 0
+        self.max_slider_value = 65535
+        self.max_val = 65535
         # 防抖
         self.debounce_timer = QTimer(self)
         self.debounce_timer.setSingleShot(True)
         self.debounce_timer.timeout.connect(self.print_values)
         # self.histogram = histogram
 
-    def set_values(self, min_value, max_value):
-        self.min_value = min_value
-        self.max_value = max_value
+    def set_values(self, min_slider_value, max_slider_value, min_val, max_val):
+        self.min_slider_value = min_slider_value
+        self.max_slider_value = max_slider_value
+        self.max_val = max_val
+        self.min_val = min_val
         self.update()
         self.debounce_timer.start(300)
 
     def print_values(self):
-        print(self.min_value, self.max_value)
+        print(self.min_slider_value, self.max_slider_value)
 
     def paintEvent(self, event):
         super(DoubleSliderLabel, self).paintEvent(event)
@@ -47,8 +51,8 @@ class DoubleSliderLabel(QLabel):
         # print(width, height)
 
         # 根据最小值和最大值计算竖线的位置
-        min_x = int(width * (self.min_value / 65535.0))
-        max_x = int(width * (self.max_value / 65535.0))
+        min_x = int(width * ((self.min_slider_value - self.min_val) / float(self.max_val - self.min_val)))
+        max_x = int(width * ((self.max_slider_value - self.min_val) / float(self.max_val - self.min_val)))
 
         # 设置笔刷和画笔
         pen = QPen(QColor(0, 0, 0), 2)
@@ -98,23 +102,23 @@ class DoubleSlider(QWidget):
 
 
     def update_values_from_min_max(self):
-        min_value = self.min_slider.value()
-        max_value = self.max_slider.value()
+        min_slider_value = self.min_slider.value()
+        max_slider_value = self.max_slider.value()
 
-        if min_value > max_value:
+        if min_slider_value > max_slider_value:
             if self.sender() == self.min_slider:
                 self.max_slider.blockSignals(True)
-                self.max_slider.setValue(min_value)
+                self.max_slider.setValue(min_slider_value)
                 self.max_slider.blockSignals(False)
-                max_value = min_value
+                max_slider_value = min_slider_value
             else:
                 self.min_slider.blockSignals(True)
-                self.min_slider.setValue(max_value)
+                self.min_slider.setValue(max_slider_value)
                 self.min_slider.blockSignals(False)
-                min_value = max_value
+                min_slider_value = max_slider_value
 
-        window_width = max_value - min_value
-        window_level = min_value + window_width // 2
+        window_width = max_slider_value - min_slider_value
+        window_level = min_slider_value + window_width // 2
 
         self.window_width_slider.blockSignals(True)
         self.window_width_slider.setValue(window_width)
@@ -124,40 +128,46 @@ class DoubleSlider(QWidget):
         self.window_level_slider.setValue(window_level)
         self.window_level_slider.blockSignals(False)
 
-        self.min_label.setText(f'最小值: {min_value}')
-        self.max_label.setText(f'最大值: {max_value}')
+        self.min_label.setText(f'最小值: {min_slider_value}')
+        self.max_label.setText(f'最大值: {max_slider_value}')
         self.window_width_label.setText(f'窗宽: {window_width}')
         self.window_level_label.setText(f'窗位: {window_level}')
-
-        self.custom_label.set_values(min_value, max_value)
+        max_val = self.min_slider.maximum()
+        min_val = self.min_slider.minimum()
+        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val)
 
 
     def update_values_from_width_level(self):
         window_width = self.window_width_slider.value()
         window_level = self.window_level_slider.value()
 
-        min_value = window_level - window_width // 2
-        max_value = window_level + window_width // 2
 
-        if min_value < 0:
-            min_value = 0
-            max_value = window_width
-        if max_value > 65535:
-            max_value = 65535
-            min_value = 65535 - window_width
+        max_val = self.min_slider.maximum()
+        min_val = self.min_slider.minimum()
+
+
+        min_slider_value = window_level - window_width // 2
+        max_slider_value = window_level + window_width // 2
+
+        if min_slider_value < 0:
+            min_slider_value = 0
+            max_slider_value = window_width
+        if max_slider_value > 65535:
+            max_slider_value = 65535
+            min_slider_value = 65535 - window_width
 
         self.min_slider.blockSignals(True)
-        self.min_slider.setValue(min_value)
+        self.min_slider.setValue(min_slider_value)
         self.min_slider.blockSignals(False)
 
         self.max_slider.blockSignals(True)
-        self.max_slider.setValue(max_value)
+        self.max_slider.setValue(max_slider_value)
         self.max_slider.blockSignals(False)
 
-        self.min_label.setText(f'最小值: {min_value}')
-        self.max_label.setText(f'最大值: {max_value}')
+        self.min_label.setText(f'最小值: {min_slider_value}')
+        self.max_label.setText(f'最大值: {max_slider_value}')
 
         self.window_width_label.setText(f'窗宽: {window_width}')
         self.window_level_label.setText(f'窗位: {window_level}')
 
-        self.custom_label.set_values(min_value, max_value)
+        self.custom_label.set_values(min_slider_value, max_slider_value, min_val, max_val)

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1158</width>
+    <width>1536</width>
     <height>1064</height>
    </rect>
   </property>
@@ -555,7 +555,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>75</width>
+              <width>100</width>
               <height>16777215</height>
              </size>
             </property>
@@ -580,7 +580,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>75</width>
+              <width>100</width>
               <height>16777215</height>
              </size>
             </property>
@@ -605,7 +605,7 @@
             </property>
             <property name="maximumSize">
              <size>
-              <width>75</width>
+              <width>100</width>
               <height>16777215</height>
              </size>
             </property>
@@ -764,45 +764,7 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_11">
           <item>
-           <widget class="QPushButton" name="merge_anno">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>23</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>合并标注</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="revoke_merge">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>23</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>撤回合并</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QRadioButton" name="auto_merge">
+           <widget class="QRadioButton" name="merge_anno">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
               <horstretch>0</horstretch>
@@ -816,7 +778,7 @@
              </size>
             </property>
             <property name="text">
-             <string>下次自动合并</string>
+             <string>合并标注</string>
             </property>
            </widget>
           </item>
@@ -1006,8 +968,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1158</width>
-     <height>23</height>
+     <width>1536</width>
+     <height>26</height>
     </rect>
    </property>
    <widget class="QMenu" name="config">

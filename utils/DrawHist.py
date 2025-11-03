@@ -49,11 +49,9 @@ def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=F
     upper_limit = min(max_count * 1.1, 2000)
     plt.ylim(0, upper_limit)
 
-    # 设置x轴范围
-    if bits == 16:
-        plt.xlim(0, 65535)
-    else:
-        plt.xlim(0, 255)
+    # 使用计算得到的 hist_range 作为 x 轴范围（替代之前的固定 0-65535 / 0-255）
+    x_min, x_max = hist_range
+    plt.xlim(x_min, x_max)
 
     # 保存直方图
     plt.savefig('histogram.png', bbox_inches='tight', pad_inches=0)

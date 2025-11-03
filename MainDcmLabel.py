@@ -21,7 +21,7 @@ from PySide2 import QtGui
 from PySide2.QtCore import Signal, QObject, QThread, QTimer
 from PySide2.QtGui import QIcon
 from PySide2.QtUiTools import QUiLoader
-from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget
+from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget, QAbstractSlider
 from PySide2.QtWidgets import QFileDialog
 from PySide2.QtWidgets import QMessageBox
 
@@ -211,6 +211,7 @@ class GUI(QMainWindow):
                                                  self.ui.window_level_slider, self.ui.min_label, self.ui.max_label,
                                                  self.ui.window_width_label, self.ui.window_level_label,
                                                  self.ui.histogram)
+
         self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
 
         """
@@ -265,8 +266,6 @@ class GUI(QMainWindow):
         self.ui.spinBox_2.valueChanged.connect(self.window_image_main)
         self.ui.spinBox_3.valueChanged.connect(self.window_image_main)
         self.ui.merge_anno.clicked.connect(self.merge_annotations)
-        self.ui.revoke_merge.clicked.connect(self.remove_merge_anno)
-        self.ui.auto_merge.toggled.connect(self.save_auto_merge_config)
         self.ui.generate_report.clicked.connect(self.generate_report)
         self.ui.save_cur_img.clicked.connect(self.save_cur_img)
         self.ui.exclude_pix.clicked.connect(self.start_exclude_pixels_mode)
@@ -294,7 +293,7 @@ class GUI(QMainWindow):
             except (json.JSONDecodeError, IOError) as e:
                 print(f"加载配置文件 '{config_path}' 失败: {e}")
 
-        self.ui.auto_merge.setChecked(auto_merge_state)
+        # self.ui.auto_merge.setChecked(auto_merge_state)
         self.ui.auto_exclude_pix.setChecked(auto_exclude_state)
         self.img_win.set_auto_exclude_enabled(auto_exclude_state)  # 通知IMG_WIN
 
@@ -345,10 +344,6 @@ class GUI(QMainWindow):
         self.folder_path = directory
         self.xml_path = self.folder_path + "-XML"
         print("folder_path: ", directory)
-
-        # 如果auto_merge被勾选，则在选择图片后执行一次合并
-        if self.ui.auto_merge.isChecked():
-            self.merge_annotations()
 
     def img_quick_trans(self, quick_trans_method, img_to_handle=None):
         """
@@ -406,8 +401,8 @@ class GUI(QMainWindow):
                 # 原始图像增强
                 # output_img = rawimg_enhance(ds)
                 # read_img = output_img
-                self.window_left = int(ds.WindowCenter) - int(ds.WindowWidth) / 2
-                self.window_right = int(ds.WindowCenter) + int(ds.WindowWidth) / 2
+                # self.window_left = int(ds.WindowCenter) - int(ds.WindowWidth) / 2
+                # self.window_right = int(ds.WindowCenter) + int(ds.WindowWidth) / 2
             elif file_extension.lower() in ['.tif', '.tiff']:
                 with Image.open(self.filePath) as read_img:
                     # 如果tif只有一帧，那么直接读取
@@ -433,11 +428,18 @@ class GUI(QMainWindow):
             # 读取并应用保存的窗宽、窗位和反色按钮状态信息
             self.img_quick_trans(quick_trans_method=NONE)
             image_info = load_img_tmp_info(self.filePath)
+            self.window_left = self.img.min()
+            self.window_right = self.img.max()
+            self.ui.min_slider.setRange(self.img.min(), self.img.max())
+            self.ui.max_slider.setRange(self.img.min(), self.img.max())
+            self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
+            self.ui.window_level_slider.setRange(self.img.min(), self.img.max())
             if image_info:
                 self.ui.reverseButton.setChecked(image_info['reverse_checked'])
                 self.ui.window_width_slider.setValue(image_info['window_width'])
                 self.ui.window_level_slider.setValue(image_info['window_level'])
             else:
+
                 if self.ui.reverseButton.isChecked():
                     self.ui.min_slider.setValue(max_val - self.img.max())
                     self.ui.max_slider.setValue(max_val - self.img.min())
@@ -452,7 +454,9 @@ class GUI(QMainWindow):
 
         # if self.img_enhance is None:
         #     self.window_image_main(quick_trans_method)
-        self.img_win.addScenes(self.img_trans if self.img_trans is not None else self.img, self.filePath, True)
+        is_merge = self.ui.merge_anno.isChecked()
+        self.img_win.addScenes(self.img_trans if self.img_trans is not None else self.img, self.filePath, True,
+                               merge=is_merge)
         self.window_image_main()
 
         # 如果没有反色，那么在这里绘制histogram
@@ -588,192 +592,10 @@ class GUI(QMainWindow):
         self.edit_window.show()
 
     def merge_annotations(self):
-        """
-        合并XML标注文件中的标注框。
-        1. 备份原始XML文件到meta子目录。
-        2. 遍历所有XML，对其中具有相同名称（或属于特殊合并组）且位置相近的<object>进行合并。
-        特殊规则:
-        - "SK" 和 "SS" 视为一组。
-        - "缩孔" 和 "缩松" 视为一组。
-        """
-        if not self.xml_path or not os.path.isdir(self.xml_path):
-            print("XML路径无效，请先打开一个文件以确定路径。")
-            return
-
-        meta_path = os.path.join(self.xml_path, 'meta')
-
-        # 1. 备份原始XML文件
-        if os.path.exists(meta_path):
-            print("Meta目录已存在，跳过合并操作。")
-            return
-        else:
-            print(f"创建备份目录: {meta_path}")
-            os.makedirs(meta_path)
-            xml_files = [f for f in os.listdir(self.xml_path) if f.endswith('.xml')]
-            for xml_file in xml_files:
-                shutil.copy2(os.path.join(self.xml_path, xml_file), meta_path)
-            print(f"已备份 {len(xml_files)} 个XML文件。")
-
-        # 2. 遍历并合并XML文件中的标注
-        print("开始合并标注...")
-        for filename in os.listdir(self.xml_path):
-            if not filename.endswith('.xml'):
-                continue
-
-            xml_file_path = os.path.join(self.xml_path, filename)
-            try:
-                tree = ET.parse(xml_file_path)
-                root = tree.getroot()
-
-                size_node = root.find('size')
-                img_width = int(size_node.find('width').text)
-                img_height = int(size_node.find('height').text)
-
-                # 按<name>对<object>进行分组，并处理特殊合并规则
-                objects_by_group = defaultdict(list)
-                for obj in root.findall('object'):
-                    name = obj.find('name').text
-                    if name in ["SK", "SS"]:
-                        group_key = "SK_SS_GROUP"
-                    elif name in ["缩孔", "缩松"]:
-                        group_key = "SHRINKAGE_GROUP"
-                    else:
-                        group_key = name
-                    objects_by_group[group_key].append(obj)
-
-                # 对每个分组进行合并处理
-                for group_key, objects in objects_by_group.items():
-                    if len(objects) < 2:
-                        continue
-
-                    # 使用字典追踪每个合并框包含的原始名称
-                    constituent_names = {id(obj): [obj.find('name').text] for obj in objects}
-
-                    merged = True
-                    while merged:
-                        merged = False
-                        i = 0
-                        while i < len(objects):
-                            j = i + 1
-                            while j < len(objects):
-                                obj1 = objects[i]
-                                obj2 = objects[j]
-
-                                bndbox1 = obj1.find('bndbox')
-                                bndbox2 = obj2.find('bndbox')
-
-                                xmin1, ymin1 = int(float(bndbox1.find('xmin').text)), int(
-                                    float(bndbox1.find('ymin').text))
-                                xmax1, ymax1 = int(float(bndbox1.find('xmax').text)), int(
-                                    float(bndbox1.find('ymax').text))
-                                xmin2, ymin2 = int(float(bndbox2.find('xmin').text)), int(
-                                    float(bndbox2.find('ymin').text))
-                                xmax2, ymax2 = int(float(bndbox2.find('xmax').text)), int(
-                                    float(bndbox2.find('ymax').text))
-
-                                horizontal_gap = max(0, max(xmin1, xmin2) - min(xmax1, xmax2))
-                                vertical_gap = max(0, max(ymin1, ymin2) - min(ymax1, ymax2))
-
-                                if horizontal_gap < img_width * 0.05 and vertical_gap < img_height * 0.05:
-                                    # 合并坐标
-                                    bndbox1.find('xmin').text = str(min(xmin1, xmin2))
-                                    bndbox1.find('ymin').text = str(min(ymin1, ymin2))
-                                    bndbox1.find('xmax').text = str(max(xmax1, xmax2))
-                                    bndbox1.find('ymax').text = str(max(ymax1, ymax2))
-
-                                    # 合并原始名称列表
-                                    obj1_id, obj2_id = id(obj1), id(obj2)
-                                    constituent_names[obj1_id].extend(constituent_names[obj2_id])
-                                    del constituent_names[obj2_id]
-
-                                    # 根据合并后的名称列表，决定obj1的新名称
-                                    if group_key == "SK_SS_GROUP":
-                                        count_sk = constituent_names[obj1_id].count("SK")
-                                        count_ss = len(constituent_names[obj1_id]) - count_sk
-                                        obj1.find('name').text = "SK" if count_sk >= count_ss else "SS"
-                                    elif group_key == "SHRINKAGE_GROUP":
-                                        count_suokong = constituent_names[obj1_id].count("缩孔")
-                                        count_suosong = len(constituent_names[obj1_id]) - count_suokong
-                                        obj1.find('name').text = "缩孔" if count_suokong >= count_suosong else "缩松"
-
-                                    # 从XML树和列表中移除obj2
-                                    root.remove(obj2)
-                                    objects.pop(j)
-                                    merged = True
-                                else:
-                                    j += 1
-                            i += 1
-
-                # 将修改后的树写回原文件
-                tree.write(xml_file_path, encoding='utf-8', xml_declaration=True)
-
-            except Exception as e:
-                print(f"处理文件 {filename} 时出错: {e}")
-
-        print("XML标注合并完成")
         self.show_img(filePath=self.filePath)
 
     def remove_merge_anno(self):
-        """
-        撤销标注合并操作。
-        检查是否存在meta备份目录。如果存在，则用meta目录中的文件覆盖当前XML文件。删除meta目录。
-        """
-        if not self.xml_path or not os.path.isdir(self.xml_path):
-            return
-
-        meta_path = os.path.join(self.xml_path, 'meta')
-
-        # 1. 检查meta目录是否存在
-        if not os.path.exists(meta_path):
-            print("未找到备份目录 'meta'，无需执行撤销操作。")
-            return
-
-        try:
-            print("开始撤销合并操作...")
-            # 2. 删除当前XML路径下的所有XML文件
-            for filename in os.listdir(self.xml_path):
-                if filename.endswith('.xml'):
-                    os.remove(os.path.join(self.xml_path, filename))
-            print("已删除当前目录的XML文件。")
-
-            # 3. 将meta目录中的所有文件复制回XML路径
-            for filename in os.listdir(meta_path):
-                shutil.copy2(os.path.join(meta_path, filename), self.xml_path)
-            print("已从备份恢复XML文件。")
-
-            # 4. 删除meta目录
-            shutil.rmtree(meta_path)
-            print("已删除备份目录 'meta'。")
-
-            print("撤销合并完成。")
-            # 刷新当前显示的图片和标注
-            self.show_img(filePath=self.filePath)
-
-        except Exception as e:
-            print(f"撤销合并时出错: {e}")
-
-    def save_auto_merge_config(self, checked):
-        """当auto_merge按钮状态改变时，保存配置到JSON文件。"""
-        config_dir = 'Sources'
-        os.makedirs(config_dir, exist_ok=True)
-        config_path = os.path.join(config_dir, 'config.json')
-
-        config = {}
-        # 先读取现有配置，以防覆盖其他设置
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                pass  # 如果文件损坏或为空，则创建一个新的
-
-        config['autoMerge'] = checked
-
-        try:
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=4)
-        except IOError as e:
-            print(f"保存配置文件 '{config_path}' 失败: {e}")
+        pass
 
     def on_auto_exclude_toggled(self, checked):
         """当 auto_exclude_pix 按钮状态改变时，保存配置并刷新视图"""

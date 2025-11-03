@@ -79,9 +79,83 @@ class IMG_WIN(QWidget):
         self.auto_exclude_enabled = False
         self.load_exclude_config()  # 初始化时加载配置
 
+    def _merge_boxes(self, boxes, img_width, img_height):
+        """
+        合并重叠或邻近的标注框。仅合并具有相同标签的框。
+        :param boxes: 标注框列表，格式为 [[xmin, ymin, xmax, ymax, label, comment], ...]
+        :param img_width: 图像宽度
+        :param img_height: 图像高度
+        :return: 合并后的标注框列表
+        """
+        if not boxes:
+            return []
+
+        # 按标签对框进行分组
+        from collections import defaultdict
+        grouped_boxes = defaultdict(list)
+        for box in boxes:
+            label = box[4]
+            grouped_boxes[label].append(box)
+
+        final_merged_boxes = []
+        width_threshold = img_width * 0.05
+        height_threshold = img_height * 0.05
+
+        # 对每个分组应用合并逻辑
+        for label, group in grouped_boxes.items():
+            if len(group) < 2:
+                final_merged_boxes.extend(group)
+                continue
+
+            merged_in_group = True
+            while merged_in_group:
+                merged_in_group = False
+                new_group = []
+                used = [False] * len(group)
+
+                for i in range(len(group)):
+                    if used[i]:
+                        continue
+
+                    current_box = list(group[i])
+                    used[i] = True
+
+                    for j in range(i + 1, len(group)):
+                        if used[j]:
+                            continue
+
+                        other_box = group[j]
+
+                        # 计算水平和垂直间距
+                        h_dist = max(current_box[0], other_box[0]) - min(current_box[2], other_box[2])
+                        v_dist = max(current_box[1], other_box[1]) - min(current_box[3], other_box[3])
+
+                        # 如果框重叠或间距在阈值内，则合并
+                        if h_dist < width_threshold and v_dist < height_threshold:
+                            # 合并框体
+                            current_box[0] = min(current_box[0], other_box[0])
+                            current_box[1] = min(current_box[1], other_box[1])
+                            current_box[2] = max(current_box[2], other_box[2])
+                            current_box[3] = max(current_box[3], other_box[3])
+                            # 合并注释 (这里简单地将它们连接起来)
+                            if other_box[5] and other_box[5] not in current_box[5]:
+                                if current_box[5]:
+                                    current_box[5] += f"_{other_box[5]}"
+                                else:
+                                    current_box[5] = other_box[5]
+
+                            used[j] = True
+                            merged_in_group = True
+
+                    new_group.append(current_box)
+                group = new_group
+
+            final_merged_boxes.extend(group)
+
+        return final_merged_boxes
 
     # clear表示是否清空原有的标签框
-    def addScenes(self, img, path, clear: bool):  # 绘制图形
+    def addScenes(self, img, path, clear: bool, merge=False):  # 绘制图形
         # 设置鼠标焦点到图形视图上
         self.graphicsView.setFocus()
         # self.org = img
@@ -95,9 +169,11 @@ class IMG_WIN(QWidget):
 
         # 创建QPixmap
         if img.dtype == np.uint16:  # 假设像素数组为16位
-            q_img = QtGui.QImage(img.data, img.shape[1], img.shape[0], img.strides[0], QtGui.QImage.Format_Grayscale16)
+            q_img = QtGui.QImage(img.data, img.shape[1], img.shape[0], img.strides[0],
+                                 QtGui.QImage.Format_Grayscale16)
         else:  # 假设像素数组为8位
-            q_img = QtGui.QImage(img.data, img.shape[1], img.shape[0], img.strides[0], QtGui.QImage.Format_Grayscale8)
+            q_img = QtGui.QImage(img.data, img.shape[1], img.shape[0], img.strides[0],
+                                 QtGui.QImage.Format_Grayscale8)
 
         self.pixmap = QtGui.QPixmap.fromImage(q_img)
         # 如果clear为True，清空原有的标签框
@@ -125,27 +201,54 @@ class IMG_WIN(QWidget):
             xml_name, suffix = os.path.splitext(os.path.basename(path))
             path_xml = os.path.join(save_xml_path, xml_name + ".xml")
             if os.path.exists(path_xml):
-                label, xmin, ymin, xmax, ymax, comment_pose = FromXML.analysis_xml(path=path_xml)
+                # 从XML获取原始数据
+                analysis_result = FromXML.analysis_xml(path=path_xml, return_size=True)
+                if not analysis_result:
+                    return
+                label, xmin, ymin, xmax, ymax, comment_pose, size = analysis_result
+                img_width, img_height = size
+
+                if not all([label, xmin, ymin, xmax, ymax]):
+                    return
+
+                # 将解析的数据转换为box列表
+                boxes = []
+                for i in range(len(label)):
+                    boxes.append([
+                        float(xmin[i]), float(ymin[i]), float(xmax[i]), float(ymax[i]),
+                        label[i], comment_pose[i]
+                    ])
+
+                # 如果merge为True，执行合并逻辑
+                if merge:
+                    boxes = self._merge_boxes(boxes, img_width, img_height)
+                    # 将合并后的数据转换回原始格式
+                    label = [b[4] for b in boxes]
+                    xmin = [str(b[0]) for b in boxes]
+                    ymin = [str(b[1]) for b in boxes]
+                    xmax = [str(b[2]) for b in boxes]
+                    ymax = [str(b[3]) for b in boxes]
+                    comment_pose = [b[5] for b in boxes]
+
                 self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
                 print(label, xmin, ymin, xmax, ymax)
-                if xmin == [] or ymin == [] or xmax == [] or ymax == []:
-                    return
-                for index, label in enumerate(label):
+
+                for index, lbl in enumerate(label):
                     # 在添加前检查是否应被排除
                     current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
                         ymin[index]), float(xmax[index]), float(ymax[index])
                     if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                        print(f"标注 '{label}' 位于排除区域，已忽略。")
+                        print(f"标注 '{lbl}' 位于排除区域，已忽略。")
                         continue  # 跳过此标注
-                    x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
-                    y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
-                    x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
-                    y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
+                    x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
+                    y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
+                    x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
+                    y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
                     self.current_rect = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)), self,
-                                                       label=label, comment=comment_pose[index])
+                                                       label=lbl, comment=comment_pose[index])
                     self.scene.addItem(self.current_rect)
 
-                    self.current_rect.label = label
+                    self.current_rect.label = lbl
                     self.current_rect.comment = comment_pose[index]
                     self.current_rect.radio_start = self.ratio
                     self.rect_items.append(self.current_rect)

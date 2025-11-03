@@ -12,7 +12,12 @@ Function of the program:
 import xml.etree.ElementTree as ET
 
 
-def analysis_xml(path):
+# utils/FromXML.py
+
+import xml.etree.ElementTree as ET
+
+
+def analysis_xml(path, return_size=False):
     # 解析XML文件
     tree = ET.parse(path)
     root = tree.getroot()
@@ -34,4 +39,15 @@ def analysis_xml(path):
             xmax.append(bndbox.find('xmax').text)
             ymax.append(bndbox.find('ymax').text)
 
-    return label, xmin, ymin, xmax, ymax, comment_pose
+    if return_size:
+        size_tag = root.find('size')
+        if size_tag is not None:
+            width = int(size_tag.find('width').text)
+            height = int(size_tag.find('height').text)
+            return label, xmin, ymin, xmax, ymax, comment_pose, (width, height)
+        else:
+            # 如果没有size标签，返回None
+            return label, xmin, ymin, xmax, ymax, comment_pose, None
+    else:
+        return label, xmin, ymin, xmax, ymax, comment_pose
+
