@@ -16,6 +16,8 @@ import xml.dom.minidom as minidom
 import json
 import pydicom
 from openpyxl.styles.builtins import output
+from PIL import Image, ImageDraw, ImageFont
+
 
 from utils import FromXML
 from PySide2 import QtCore
@@ -270,6 +272,7 @@ class GUI(QMainWindow):
         self.ui.merge_anno.clicked.connect(self.merge_annotations)
         self.ui.generate_report.triggered.connect(self.generate_report)
         self.ui.save_cur_img.triggered.connect(self.save_cur_img)
+        self.ui.save_cur_img_xml.triggered.connect(self.save_cur_img_xml)
         self.ui.exclude_pix.triggered.connect(self.start_exclude_pixels_mode)
         self.ui.auto_exclude_pix.toggled.connect(self.on_auto_exclude_toggled)
         self.ui.clean_exclude_pix.triggered.connect(self.clear_exclude_regions)
@@ -1073,6 +1076,135 @@ class GUI(QMainWindow):
                     raise IOError("cv2.imencode failed")
             except Exception as e:
                 print(f"保存图像时发生错误: {e}")
+
+    def save_cur_img_xml(self):
+        """
+        保存当前显示的增强后图像，并连同其上的标注框和信息一起保存。
+        """
+        # 1. 检查是否有可保存的图像
+        if self.img_enhanced is None or not isinstance(self.img_enhanced, np.ndarray):
+            QMessageBox.warning(self.ui, "无法保存", "当前没有可供保存的图像。\n请先加载并处理一张图片。")
+            return
+        if not self.filePath:
+            QMessageBox.warning(self.ui, "无法保存", "未加载任何文件，无法确定文件名。")
+            return
+
+        config_dir = 'Sources'
+        config_path = os.path.join(config_dir, 'config.json')
+        config = {}
+        save_dir = None
+
+        # 2. 检查配置文件中是否存在有效的图像保存路径
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                path_from_config = config.get('img_save_path')
+                if path_from_config and os.path.isdir(path_from_config):
+                    save_dir = path_from_config
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        # 3. 如果路径未配置或无效，则弹出对话框让用户选择
+        if not save_dir:
+            default_path = self.folder_path if self.folder_path and os.path.isdir(self.folder_path) else os.getcwd()
+            selected_dir = QFileDialog.getExistingDirectory(
+                self.ui,
+                "选择图像保存位置",
+                default_path
+            )
+
+            if not selected_dir:
+                QMessageBox.information(self.ui, "操作取消", "未选择保存位置，已取消保存。")
+                return
+
+            save_dir = selected_dir
+            config['img_save_path'] = save_dir
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4)
+                print(f"图像保存路径已配置并保存: {save_dir}")
+            except IOError as e:
+                QMessageBox.warning(self.ui, "保存配置失败", f"无法保存图像路径配置: {e}")
+
+        # 4. 准备图像并绘制标注
+        if save_dir:
+            # 将灰度图转换为BGR彩色图以便绘制彩色矩形和文字
+            if len(self.img_enhanced.shape) == 2:
+                image_to_save = cv2.cvtColor(self.img_enhanced, cv2.COLOR_GRAY2BGR)
+            else:
+                image_to_save = self.img_enhanced.copy()
+
+            # 获取标注框
+            rect_items = self.img_win.get_rect_items()
+            box_color = (255, 0, 0)  # 绿色
+            text_color = (255, 0, 0) # 绿色
+
+            # --- 修正：使用 Pillow 绘制中文 ---
+            # 1. 将 OpenCV 图像 (BGR) 转换为 Pillow 图像 (RGB)
+            pil_img = Image.fromarray(cv2.cvtColor(image_to_save, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil_img)
+
+            # 2. 加载支持中文的字体文件
+            font_path = os.path.join('Sources', 'simhei.ttf') # 确保字体文件在此路径
+            try:
+                font_size = 15
+                font = ImageFont.truetype(font_path, font_size)
+            except IOError:
+                QMessageBox.warning(self.ui, "字体错误", f"无法加载字体文件: {font_path}\n请确保字体文件存在。")
+                # 如果字体加载失败，则退回到OpenCV的默认英文字体进行绘制
+                font = None
+
+            for item in rect_items:
+                rect = item.rect()
+                name = item.label
+                x, y, w, h = int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height())
+
+                # 使用Pillow绘制矩形 (或者也可以保留下面的cv2.rectangle)
+                draw.rectangle([(x, y), (x + w, y + h)], outline=box_color, width=2)
+
+                # 绘制标签文本
+                if font:
+                    # 使用Pillow绘制中文
+                    text_bbox = draw.textbbox((0, 0), name, font=font)
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_height = text_bbox[3] - text_bbox[1]
+                    text_x = x
+                    text_y = y - text_height - 2 if y - text_height > 0 else y + 2
+                    draw.text((text_x, text_y), name, font=font, fill=text_color)
+                else:
+                    # Pillow字体加载失败，回退到OpenCV绘制（中文会是乱码）
+                    cv2.putText(image_to_save, name, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1)
+
+            # 3. 将 Pillow 图像转换回 OpenCV 格式
+            image_to_save = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            # --- 修正结束 ---
+
+            # 5. 确定文件名并保存图像
+            base_name = os.path.basename(self.filePath)
+            file_name_without_ext = os.path.splitext(base_name)[0]
+            output_file_name = f"{file_name_without_ext}_annotated.jpg"
+            full_save_path = os.path.join(save_dir, output_file_name)
+            counter = 1
+            while os.path.exists(full_save_path):
+                output_file_name = f"{file_name_without_ext}_annotated({counter}).jpg"
+                full_save_path = os.path.join(save_dir, output_file_name)
+                counter += 1
+
+            try:
+                is_success, buffer = cv2.imencode(".jpg", image_to_save)
+                if is_success:
+                    with open(full_save_path, 'wb') as f:
+                        f.write(buffer)
+                    QMessageBox.information(self.ui, "保存成功", f"带标注的图像已成功保存至:\n{full_save_path}")
+                    print(f"带标注的图像已保存: {full_save_path}")
+                else:
+                    raise IOError("cv2.imencode failed")
+            except Exception as e:
+                QMessageBox.warning(self.ui, "保存失败", f"保存带标注图像时发生错误: {e}")
+                print(f"保存带标注图像时发生错误: {e}")
+
 
     def start_exclude_pixels_mode(self):
         """

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1897</width>
-    <height>892</height>
+    <height>917</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -897,6 +897,7 @@
     </property>
     <addaction name="pushButton"/>
     <addaction name="save_cur_img"/>
+    <addaction name="save_cur_img_xml"/>
     <addaction name="generate_report"/>
    </widget>
    <widget class="QMenu" name="menu_2">
@@ -905,11 +906,11 @@
     </property>
     <addaction name="updateLabel"/>
     <addaction name="pushButton_save_xml"/>
-    <addaction name="clean_exclude_pix"/>
     <addaction name="exclude_pix"/>
+    <addaction name="clean_exclude_pix"/>
    </widget>
-   <addaction name="config"/>
    <addaction name="menu"/>
+   <addaction name="config"/>
    <addaction name="menu_2"/>
   </widget>
   <widget class="QToolBar" name="toolBar">
@@ -929,9 +930,14 @@
     <bool>false</bool>
    </attribute>
    <addaction name="pushButton"/>
+   <addaction name="save_cur_img"/>
+   <addaction name="save_cur_img_xml"/>
    <addaction name="generate_report"/>
+   <addaction name="separator"/>
    <addaction name="updateLabel"/>
    <addaction name="pushButton_save_xml"/>
+   <addaction name="exclude_pix"/>
+   <addaction name="clean_exclude_pix"/>
   </widget>
   <action name="change_img_savepath">
    <property name="text">
@@ -953,7 +959,14 @@
    </property>
   </action>
   <action name="save_cur_img">
+   <property name="icon">
+    <iconset resource="../Sources/sources_lable.qrc">
+     <normaloff>:/新前缀/保存图片.png</normaloff>:/新前缀/保存图片.png</iconset>
+   </property>
    <property name="text">
+    <string>保存图片</string>
+   </property>
+   <property name="iconText">
     <string>保存图片</string>
    </property>
   </action>
@@ -984,24 +997,31 @@
     <string>保存标注</string>
    </property>
   </action>
-  <action name="action">
-   <property name="text">
-    <string>合并标注</string>
-   </property>
-  </action>
-  <action name="action_7">
-   <property name="text">
-    <string>撤回合并</string>
-   </property>
-  </action>
   <action name="clean_exclude_pix">
+   <property name="icon">
+    <iconset resource="../Sources/sources_lable.qrc">
+     <normaloff>:/新前缀/清空坏点.png</normaloff>:/新前缀/清空坏点.png</iconset>
+   </property>
    <property name="text">
     <string>清空坏点</string>
    </property>
   </action>
   <action name="exclude_pix">
+   <property name="icon">
+    <iconset resource="../Sources/sources_lable.qrc">
+     <normaloff>:/新前缀/选择坏点.png</normaloff>:/新前缀/选择坏点.png</iconset>
+   </property>
    <property name="text">
     <string>选择坏点</string>
+   </property>
+  </action>
+  <action name="save_cur_img_xml">
+   <property name="icon">
+    <iconset resource="../Sources/sources_lable.qrc">
+     <normaloff>:/新前缀/保存图片和标注.png</normaloff>:/新前缀/保存图片和标注.png</iconset>
+   </property>
+   <property name="text">
+    <string>保存图片与标注</string>
    </property>
   </action>
  </widget>

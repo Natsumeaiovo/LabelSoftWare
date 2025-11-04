@@ -1,8 +1,12 @@
 <RCC>
   <qresource prefix="新前缀">
     <file>数据标注.png</file>
+    <file>选择坏点.png</file>
+    <file>清空坏点.png</file>
+    <file>保存图片和标注.png</file>
     <file>生成报告.png</file>
     <file>保存.png</file>
+    <file>保存图片.png</file>
     <file>导入.png</file>
   </qresource>
 </RCC>

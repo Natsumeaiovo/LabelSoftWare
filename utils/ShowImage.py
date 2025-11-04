@@ -72,7 +72,6 @@ class IMG_WIN(QWidget):
         self.rect_info_raw = None
         # 当前 scene 中的所有矩形框列表
         self.rect_items: List[CustomRectItem] = []
-
         self.updating_selection = False
         self.is_dirty = False  # 添加一个脏标记
 
@@ -243,13 +242,14 @@ class IMG_WIN(QWidget):
                     if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
                         print(f"标注 '{lbl}' 位于排除区域，已忽略。")
                         continue  # 跳过此标注
-                    x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
-                    y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
-                    x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
-                    y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
-                    self.current_rect = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)), self,
-                                                       label=lbl, comment=comment_pose[index])
-                    self.scene.addItem(self.current_rect)
+                        # 直接使用原始图像坐标，因为 CustomRectItem 现在是 pixmapItem 的子项
+                        # 其坐标系相对于父项。父项的缩放和移动会自动应用到子项。
+                    rect_in_pixmap = QRectF(QPointF(current_xmin, current_ymin),
+                                            QPointF(current_xmax, current_ymax))
+                    self.current_rect = CustomRectItem(rect_in_pixmap, self,
+                                                       label=lbl, comment=comment_pose[index],
+                                                       parent=self.pixmapItem)  # 设置父项
+                    # self.scene.addItem(self.current_rect) # 不再需要，因为父项已在场景中
 
                     self.current_rect.label = lbl
                     self.current_rect.comment = comment_pose[index]
@@ -268,17 +268,12 @@ class IMG_WIN(QWidget):
         comments = []
 
         for item in self.rect_items:
-            # 获取矩形在场景中的角点
-            rect_scene = item.mapRectToScene(item.rect())
-
-            # 获取图像项目当前的位置和缩放
-            pixmap_pos = self.pixmapItem.pos()
-
-            # 计算标注框在原始图像中的坐标（除以缩放比例）
-            x_min = (rect_scene.topLeft().x() - pixmap_pos.x()) / self.ratio
-            y_min = (rect_scene.topLeft().y() - pixmap_pos.y()) / self.ratio
-            x_max = (rect_scene.bottomRight().x() - pixmap_pos.x()) / self.ratio
-            y_max = (rect_scene.bottomRight().y() - pixmap_pos.y()) / self.ratio
+            # item.rect() 直接返回相对于父项(pixmapItem)的坐标，这正是我们需要的原始坐标
+            rect_local = item.rect()
+            x_min = rect_local.left()
+            y_min = rect_local.top()
+            x_max = rect_local.right()
+            y_max = rect_local.bottom()
 
             labels.append(item.label)
             xmins.append(str(x_min))
@@ -286,6 +281,8 @@ class IMG_WIN(QWidget):
             xmaxs.append(str(x_max))
             ymaxs.append(str(y_max))
             comments.append(item.comment)
+
+
 
         self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments]
         self.set_dirty()  # 在同步数据后，将数据标记为“脏”
@@ -299,6 +296,7 @@ class IMG_WIN(QWidget):
         # 处理中键点击 - 直接传递给下层项目
         if event.button() == Qt.MiddleButton:
             if self.is_merge:
+                QtWidgets.QMessageBox.warning(self, "警告", "合并模式下无法操作标注框")
                 return
             item = self.scene.itemAt(event.scenePos(), self.graphicsView.transform())
             if isinstance(item, CustomRectItem):
@@ -313,6 +311,7 @@ class IMG_WIN(QWidget):
         # if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
         if event.button() == Qt.RightButton:    # 如果按下鼠标右键
             if self.is_merge:
+                QtWidgets.QMessageBox.warning(self, "警告", "合并模式下无法操作标注框")
                 return
             item = self.graphicsView.itemAt(event.scenePos().toPoint())
             # 如果鼠标右键在标注框上
@@ -322,19 +321,23 @@ class IMG_WIN(QWidget):
                     # 如果 光标放在了标注框的边缘，那么是 resize 方框
                     self.resizing = True
                     self.resizing_rect = item
-                    self.start_pos = event.scenePos()
-                    self.orig_rect = item.rect()
+                    # 记录下调整大小操作开始时的所有必要初始状态
+                    item.initial_mouse_pos = event.scenePos()  # 记录鼠标在场景中的初始位置
+                    item.initial_rect = item.rect()  # 记录矩形在局部坐标中的初始几何形状
                     return
                 self.preMousePosition = event.scenePos()
                 self.moving = True
                 self.resizing_rect = item
+                # 记录拖动开始时，item 在其父坐标系中的初始位置
+                item.initial_pos = item.pos()
                 return
             else:
-                self.start_pos = event.scenePos()
-                # 正在绘制方框
+                # 将场景坐标转换为 pixmapItem 的局部坐标
+                self.start_pos = self.pixmapItem.mapFromScene(event.scenePos())
                 self.drawing = True
-                self.current_rect = CustomRectItem(QRectF(self.start_pos, self.start_pos), self)
-                self.scene.addItem(self.current_rect)
+                # 创建时指定父项
+                self.current_rect = CustomRectItem(QRectF(self.start_pos, self.start_pos), self, parent=self.pixmapItem)
+                # self.scene.addItem(self.current_rect) # 不再需要
 
     def scene_mouseReleaseEvent(self, event):
         # if event.button() == Qt.LeftButton:
@@ -342,10 +345,13 @@ class IMG_WIN(QWidget):
             if self.drawing:
                 self.drawing = False
                 # 如果鼠标释放位置与点击位置相同，那么不添加方框，直接返回
-                if self.start_pos == event.scenePos():
+                # 注意：这里比较的是场景坐标，而start_pos是局部坐标，需要转换
+                end_pos_local = self.pixmapItem.mapFromScene(event.scenePos())
+                if self.start_pos == end_pos_local:
                     self.drawing = False
-                    self.scene.removeItem(self.current_rect)
-                    self.current_rect = None
+                    if self.current_rect:
+                        self.scene.removeItem(self.current_rect)
+                        self.current_rect = None
                     # 如果在排除模式，重置光标
                     if self.is_excluding_pixels:
                         self.set_exclude_mode(False)
@@ -383,21 +389,42 @@ class IMG_WIN(QWidget):
     def scene_mouseMoveEvent(self, event):
         if self.resizing and self.resizing_rect:
             # 如果是在 resizing 方框
+            # 1. 获取鼠标在场景中的当前位置
             current_pos = event.scenePos()
-            delta = current_pos - self.start_pos
-            new_rect = self.resizing_rect.rect().adjusted(0, 0, delta.x(), delta.y())
-            self.resizing_rect.setRect(new_rect)
-            self.start_pos = current_pos
+
+            # 2. 计算从鼠标按下开始的总位移（场景坐标系）
+            total_scene_delta = current_pos - self.resizing_rect.initial_mouse_pos
+
+            # 3. 将总位移转换为父项(pixmapItem)的局部坐标系下的位移
+            total_local_delta_x = total_scene_delta.x() / self.ratio
+            total_local_delta_y = total_scene_delta.y() / self.ratio
+
+            # 4. 基于矩形的初始尺寸和总的局部坐标位移，计算新矩形
+            new_rect = self.resizing_rect.initial_rect.adjusted(0, 0, total_local_delta_x, total_local_delta_y)
+
+            self.resizing_rect.setRect(new_rect.normalized())
+
+            # 5. 更新UI信息
             self.resizing_rect.update_info(True)
             return
 
         item = self.graphicsView.itemAt(event.scenePos().toPoint())
         if isinstance(item, CustomRectItem):
             if self.moving:
-                if Qt.LeftButton and not event.modifiers() & Qt.ControlModifier and self.moving:
-                    item.setPos(item.pos() + event.scenePos() - self.preMousePosition)
-                    item.update_info(False)
-                    self.preMousePosition = event.scenePos()
+                # 1. 计算鼠标从按下开始的总位移（场景坐标系）
+                total_scene_delta = event.scenePos() - self.preMousePosition  # preMousePosition 在按下时已设为初始位置
+
+                # 2. 将总位移转换为父项(pixmapItem)的局部坐标系下的位移
+                total_local_delta_x = total_scene_delta.x() / self.ratio
+                total_local_delta_y = total_scene_delta.y() / self.ratio
+                total_local_delta = QPointF(total_local_delta_x, total_local_delta_y)
+
+                # 3. 基于 item 的初始位置和总的局部坐标位移，计算新位置
+                new_pos = item.initial_pos + total_local_delta
+                item.setPos(new_pos)
+
+                # 4. 更新UI信息 (这部分逻辑可以保留)
+                item.update_info(False)
 
             self.graphicsView.setCursor(item.get_cursor_shape(event.scenePos()))
         else:
@@ -406,7 +433,8 @@ class IMG_WIN(QWidget):
         # if Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
         if Qt.RightButton:
             if self.drawing and self.current_rect:
-                current_pos = event.scenePos()
+                # 将场景坐标转换为 pixmapItem 的局部坐标
+                current_pos = self.pixmapItem.mapFromScene(event.scenePos())
                 rect = QRectF(self.start_pos, current_pos).normalized()
                 self.current_rect.setRect(rect)
 
@@ -416,277 +444,83 @@ class IMG_WIN(QWidget):
             self.MouseMove = event.scenePos() - self.preMousePosition  # 鼠标当前位置-先前位置=单次偏移量
             self.preMousePosition = event.scenePos()  # 更新当前鼠标在窗口上的位置，下次移动用
             self.pixmapItem.setPos(self.pixmapItem.pos() + self.MouseMove)  # 更新图元位置
-            for item in self.scene.items():
-                if isinstance(item, CustomRectItem):
-                    item.setPos(item.pos() + self.MouseMove)
+            # for item in self.scene.items():
+            #     if isinstance(item, CustomRectItem):
+            #         item.setPos(item.pos() + self.MouseMove)
 
+    # 在 IMG_WIN 类中
     def scene_wheelEvent(self, event):
         """定义滚轮方法。当鼠标在图元范围之外，以图元中心为缩放原点；当鼠标在图元之中，以鼠标悬停位置为缩放中心"""
         angle = event.delta() / 8  # 返回QPoint对象，为滚轮转过的数值，单位为1/8度
+        old_ratio = self.ratio
 
-        ''' ------------------- 滑轮上滚，放大 ------------------- '''
         if angle > 0:
-            # 计算新的缩放比例
-            old_ratio = self.ratio
-            self.ratio += self.zoom_step  # 缩放比例自加
+            self.ratio += self.zoom_step
             if self.ratio > self.zoom_max:
                 self.ratio = self.zoom_max
-            else:
-                # 计算当前图元的宽高
-                w = self.pixmap.size().width() * old_ratio
-                h = self.pixmap.size().height() * old_ratio
-                # 图元的边界
-                x1 = self.pixmapItem.pos().x()
-                x2 = x1 + w
-                y1 = self.pixmapItem.pos().y()
-                y2 = y1 + h
-
-                if (x1 < event.scenePos().x() < x2) and (y1 < event.scenePos().y() < y2):
-                    # 滑轮上滚，光标在图元内部
-                    # 保存当前图元位置
-                    old_pos = self.pixmapItem.pos()
-                    # 设置新的缩放
-                    self.pixmapItem.setScale(self.ratio)
-
-                    # 计算鼠标相对于图元左上角的位置
-                    mouse_rel_pos = event.scenePos() - old_pos
-
-                    # 计算缩放比例变化
-                    scale_factor = self.ratio / old_ratio
-
-                    # 计算新的偏移量，保持鼠标位置不变
-                    new_mouse_rel_pos = mouse_rel_pos * scale_factor
-                    offset = new_mouse_rel_pos - mouse_rel_pos
-
-                    # 应用偏移，使鼠标保持在图像上的相同相对位置
-                    self.pixmapItem.setPos(old_pos - offset)
-
-                    # 更新标注框
-                    if self.rect_info_raw:
-                        for i, rect_item in enumerate(self.rect_items):
-                            # 删除旧的标注框
-                            self.scene.removeItem(rect_item)
-
-                        # 清空标注框列表
-                        self.rect_items.clear()
-
-                        # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
-
-                        for index, lbl in enumerate(label):
-                            # --- 检查标注是否应被排除 ---
-                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
-                                ymin[index]), float(xmax[index]), float(ymax[index])
-                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                                continue  # 跳过此标注
-                            # 计算标注框在新缩放比例下的位置
-                            x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
-                            y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
-                            x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
-                            y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
-
-                            # 创建新的标注框
-                            rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
-                                                       self, label=lbl, comment=comment_pose[index])
-                            rect_item.radio_start = self.ratio
-
-                            # 添加到场景和列表
-                            self.scene.addItem(rect_item)
-                            self.rect_items.append(rect_item)
-
-                    # 更新列表显示
-                    self.update_rect_items(True)
-                    # 更新场景
-                    self.scene.update()
-                else:
-                    # 滑轮上滚，光标在图元外部，以图元中心缩放
-                    old_ratio = self.ratio
-
-                    # 计算当前图像中心点
-                    old_center_x = self.pixmapItem.pos().x() + (self.pixmap.size().width() * old_ratio) / 2
-                    old_center_y = self.pixmapItem.pos().y() + (self.pixmap.size().height() * old_ratio) / 2
-
-                    # 应用新的缩放比例
-                    self.pixmapItem.setScale(self.ratio)
-
-                    # 计算新尺寸下的偏移量，保持图片中心位置不变
-                    new_width = self.pixmap.size().width() * self.ratio
-                    new_height = self.pixmap.size().height() * self.ratio
-                    new_pos_x = old_center_x - new_width / 2
-                    new_pos_y = old_center_y - new_height / 2
-
-                    # 应用新位置
-                    self.pixmapItem.setPos(new_pos_x, new_pos_y)
-
-                    # 更新标注框
-                    if self.rect_info_raw:
-                        for i, rect_item in enumerate(self.rect_items):
-                            # 删除旧的标注框
-                            self.scene.removeItem(rect_item)
-
-                        # 清空标注框列表
-                        self.rect_items.clear()
-
-                        # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
-
-                        for index, lbl in enumerate(label):
-                            # --- 检查标注是否应被排除 ---
-                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
-                                ymin[index]), float(xmax[index]), float(ymax[index])
-                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                                continue  # 跳过此标注
-                            # 计算标注框在新缩放比例下的位置
-                            x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
-                            y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
-                            x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
-                            y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
-                            # 创建新的标注框
-                            rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
-                                                       self, label=lbl, comment=comment_pose[index])
-                            rect_item.radio_start = self.ratio
-                            # 添加到场景和列表
-                            self.scene.addItem(rect_item)
-                            self.rect_items.append(rect_item)
-
-                    # 更新列表显示
-                    self.update_rect_items(True)
-                    # 更新场景
-                    self.scene.update()
         else:
-            ''' ------------------- 滑轮下滚，缩小 ------------------- '''
-            # 计算新的缩放比例
-            old_ratio = self.ratio
-            self.ratio -= self.zoom_step  # 缩放比例自减
+            self.ratio -= self.zoom_step
             if self.ratio < self.zoom_min:
                 self.ratio = self.zoom_min
-            else:
-                # 计算当前图元的宽高
-                w = self.pixmap.size().width() * old_ratio
-                h = self.pixmap.size().height() * old_ratio
-                # 图元的边界
-                x1 = self.pixmapItem.pos().x()
-                x2 = x1 + w
-                y1 = self.pixmapItem.pos().y()
-                y2 = y1 + h
 
-                # 判断鼠标是否在图元内部
-                if (x1 < event.scenePos().x() < x2) and (y1 < event.scenePos().y() < y2):
-                    # 滑轮下滚，光标在图元内部
-                    # 保存当前图元位置
-                    old_pos = self.pixmapItem.pos()
+        # 如果缩放比例没有变化，则不执行任何操作
+        if self.ratio == old_ratio:
+            return
 
-                    # 设置新的缩放
-                    self.pixmapItem.setScale(self.ratio)
+        # --- 核心修改开始 ---
+        # 由于 CustomRectItem 是 pixmapItem 的子项，我们只需要缩放和移动 pixmapItem 即可。
+        # 子项会自动继承父项的变换（缩放和移动）。
 
-                    # 计算鼠标相对于图元左上角的位置
-                    mouse_rel_pos = event.scenePos() - old_pos
+        # 计算当前图元的边界
+        w = self.pixmap.size().width() * old_ratio
+        h = self.pixmap.size().height() * old_ratio
+        x1 = self.pixmapItem.pos().x()
+        x2 = x1 + w
+        y1 = self.pixmapItem.pos().y()
+        y2 = y1 + h
 
-                    # 计算缩放比例变化
-                    scale_factor = self.ratio / old_ratio
+        old_pos = self.pixmapItem.pos()
+        scale_factor = self.ratio / old_ratio
 
-                    # 计算新的偏移量，保持鼠标位置不变
-                    new_mouse_rel_pos = mouse_rel_pos * scale_factor
-                    offset = new_mouse_rel_pos - mouse_rel_pos
+        # 判断缩放中心
+        if (x1 < event.scenePos().x() < x2) and (y1 < event.scenePos().y() < y2):
+            # 1. 以鼠标位置为中心缩放
+            # 计算鼠标相对于图元左上角的位置
+            mouse_rel_pos = event.scenePos() - old_pos
+            # 计算新的偏移量，以保持鼠标下的点在屏幕上位置不变
+            new_mouse_rel_pos = mouse_rel_pos * scale_factor
+            offset = new_mouse_rel_pos - mouse_rel_pos
+            new_pos = old_pos - offset
+        else:
+            # 2. 以图像中心为中心缩放
+            # 计算旧的中心点
+            old_center = old_pos + QPointF(w / 2, h / 2)
+            # 计算新的中心点应该在哪里
+            new_center = old_center
+            # 计算新尺寸
+            new_w = self.pixmap.size().width() * self.ratio
+            new_h = self.pixmap.size().height() * self.ratio
+            # 根据新中心和新尺寸计算新左上角位置
+            new_pos = new_center - QPointF(new_w / 2, new_h / 2)
 
-                    # 应用偏移，使鼠标保持在图像上的相同相对位置
-                    self.pixmapItem.setPos(old_pos - offset)
+        # 应用新的缩放和位置
+        self.pixmapItem.setScale(self.ratio)
+        self.pixmapItem.setPos(new_pos)
 
-                    # 更新标注框
-                    if self.rect_info_raw:
-                        for i, rect_item in enumerate(self.rect_items):
-                            # 删除旧的标注框
-                            self.scene.removeItem(rect_item)
+        # 不再需要手动更新、删除或重新创建任何 CustomRectItem
+        # 下面这一大段代码都可以安全删除
 
-                        # 清空标注框列表
-                        self.rect_items.clear()
+        # # 更新标注框  <--- 以下所有代码块都应删除
+        # if self.rect_info_raw:
+        #     for i, rect_item in enumerate(self.rect_items):
+        #         self.scene.removeItem(rect_item)
+        #     self.rect_items.clear()
+        #     # ... (所有重新加载和创建 rect_item 的代码) ...
+        #
+        # self.update_rect_items(True)
+        # self.scene.update()
 
-                        # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
-
-                        for index, lbl in enumerate(label):
-                            # --- 检查标注是否应被排除 ---
-                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
-                                ymin[index]), float(xmax[index]), float(ymax[index])
-                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                                continue  # 跳过此标注
-                            # 计算标注框在新缩放比例下的位置
-                            x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
-                            y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
-                            x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
-                            y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
-
-                            # 创建新的标注框
-                            rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
-                                                       self, label=lbl, comment=comment_pose[index])
-                            rect_item.radio_start = self.ratio
-
-                            # 添加到场景和列表
-                            self.scene.addItem(rect_item)
-                            self.rect_items.append(rect_item)
-
-                    # 更新列表显示
-                    self.update_rect_items(True)
-                    # 更新场景
-                    self.scene.update()
-                else:
-                    # 滑轮下滚，光标在图元外部
-                    old_ratio = self.ratio
-
-                    # 计算当前图像中心点
-                    old_center_x = self.pixmapItem.pos().x() + (self.pixmap.size().width() * old_ratio) / 2
-                    old_center_y = self.pixmapItem.pos().y() + (self.pixmap.size().height() * old_ratio) / 2
-
-                    # 应用新的缩放比例
-                    self.pixmapItem.setScale(self.ratio)
-
-                    # 计算新尺寸下的偏移量，保持图片中心位置不变
-                    new_width = self.pixmap.size().width() * self.ratio
-                    new_height = self.pixmap.size().height() * self.ratio
-                    new_pos_x = old_center_x - new_width / 2
-                    new_pos_y = old_center_y - new_height / 2
-
-                    # 应用新位置
-                    self.pixmapItem.setPos(new_pos_x, new_pos_y)
-
-                    # 更新标注框
-                    if self.rect_info_raw:
-                        for i, rect_item in enumerate(self.rect_items):
-                            # 删除旧的标注框
-                            self.scene.removeItem(rect_item)
-
-                        # 清空标注框列表
-                        self.rect_items.clear()
-
-                        # 重新加载标注框
-                        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
-
-                        for index, lbl in enumerate(label):
-                            # --- 检查标注是否应被排除 ---
-                            current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
-                                ymin[index]), float(xmax[index]), float(ymax[index])
-                            if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                                continue  # 跳过此标注
-                            # 计算标注框在新缩放比例下的位置
-                            x1 = self.pixmapItem.pos().x() + float(xmin[index]) * self.ratio
-                            y1 = self.pixmapItem.pos().y() + float(ymin[index]) * self.ratio
-                            x2 = self.pixmapItem.pos().x() + float(xmax[index]) * self.ratio
-                            y2 = self.pixmapItem.pos().y() + float(ymax[index]) * self.ratio
-
-                            # 创建新的标注框
-                            rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
-                                                       self, label=lbl, comment=comment_pose[index])
-                            rect_item.radio_start = self.ratio
-
-                            # 添加到场景和列表
-                            self.scene.addItem(rect_item)
-                            self.rect_items.append(rect_item)
-
-                    # 更新列表显示
-                    self.update_rect_items(True)
-                    # 更新场景
-                    self.scene.update()
-
+        # --- 核心修改结束 ---
 
     def label_and_comment_dialog(self):
         dialog = LabelDialog()
@@ -818,11 +652,11 @@ class IMG_WIN(QWidget):
                 pass  # 文件存在但为空或损坏，当作新文件处理
 
         # 获取相对于图像原始尺寸的坐标
-        pixmap_pos = self.pixmapItem.pos()
-        x_min = (rect.left() - pixmap_pos.x()) / self.ratio
-        y_min = (rect.top() - pixmap_pos.y()) / self.ratio
-        x_max = (rect.right() - pixmap_pos.x()) / self.ratio
-        y_max = (rect.bottom() - pixmap_pos.y()) / self.ratio
+        # 由于绘制的矩形是 pixmapItem 的子项，其 rect() 已经是局部坐标，即原始图像坐标
+        x_min = rect.left()
+        y_min = rect.top()
+        x_max = rect.right()
+        y_max = rect.bottom()
 
         new_rect_coords = [x_min, y_min, x_max, y_max]
 
@@ -835,50 +669,29 @@ class IMG_WIN(QWidget):
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4)
             print(f"已保存新的排除区域: {new_rect_coords}")
-            self.load_exclude_config()  # 重新加载配置
-            # 重新加载所有标注框，应用排除逻辑
-            if self.rect_info_raw:
-                # 移除所有现有标注框
-                for item in self.rect_items:
-                    self.scene.removeItem(item)
-                self.rect_items.clear()
+            # 1. 重新加载配置
+            self.load_exclude_config()
 
-                # 重新加载标注框
-                label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
-                for index, lbl in enumerate(label):
-                    current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
-                        ymin[index]), float(xmax[index]), float(ymax[index])
-                    # 检查是否应被排除
-                    if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
-                        continue  # 跳过此标注
-
-                    # 重新计算在当前视图下的坐标并创建
-                    x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
-                    y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
-                    x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
-                    y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
-
-                    rect_item = CustomRectItem(QRectF(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2)),
-                                               self, label=lbl, comment=comment_pose[index])
-                    rect_item.radio_start = self.ratio
-                    self.scene.addItem(rect_item)
-                    self.rect_items.append(rect_item)
-
-                # 更新UI
-                self.update_rect_items(True)
-                self.scene.update()
+            # 2. 调用统一的、正确的刷新函数
+            self.refresh_annotations()
         except IOError as e:
             print(f"保存排除区域配置失败: {e}")
 
-    def is_rect_excluded(self, xmin, ymin, xmax, ymax):
-        """检查一个标注框是否在任何排除区域内 (中心点判断)"""
-        # 仅当自动排除功能启用时，才进行检查
+
+    def is_rect_excluded(self, xmin, ymin, xmax, ymax) -> bool:
+        """
+        检查给定的矩形坐标是否与任何排除区域重叠。
+        如果启用自动排除，并且标注框与任何一个排除区域有交集，则返回 True。
+        """
+        # 1. 如果没有启用自动排除，则不进行任何操作
         if not self.auto_exclude_enabled:
             return False
         rect_center_x = (xmin + xmax) / 2
         rect_center_y = (ymin + ymax) / 2
         for ex_rect in self.exclude_rects:
             ex_xmin, ex_ymin, ex_xmax, ex_ymax = ex_rect
+            print("标注框：", xmin, xmax, ymin, ymax)
+            print("排除框：", ex_xmin, ex_xmax, ex_ymin, ex_ymax)
             if ex_xmin <= rect_center_x <= ex_xmax and ex_ymin <= rect_center_y <= ex_ymax:
                 return True
         return False
@@ -900,6 +713,9 @@ class IMG_WIN(QWidget):
 
         # 移除所有现有标注框
         for item in self.rect_items:
+            # 从父项中移除，而不是直接从场景中移除
+            if item.parentItem() == self.pixmapItem:
+                item.setParentItem(None)
             self.scene.removeItem(item)
         self.rect_items.clear()
 
@@ -913,16 +729,18 @@ class IMG_WIN(QWidget):
             if self.is_rect_excluded(current_xmin, current_ymin, current_xmax, current_ymax):
                 continue  # 跳过此标注
 
-            # 重新计算在当前视图下的坐标并创建
-            x1 = self.pixmapItem.pos().x() + current_xmin * self.ratio
-            y1 = self.pixmapItem.pos().y() + current_ymin * self.ratio
-            x2 = self.pixmapItem.pos().x() + current_xmax * self.ratio
-            y2 = self.pixmapItem.pos().y() + current_ymax * self.ratio
+            # 1. 使用相对于父项的局部坐标创建矩形
+            rect_in_pixmap = QRectF(QPointF(current_xmin, current_ymin),
+                                    QPointF(current_xmax, current_ymax))
 
-            rect_item = CustomRectItem(QRectF(QPointF(x1, y1), QPointF(x2, y2)),
-                                       self, label=lbl, comment=comment_pose[index])
-            rect_item.radio_start = self.ratio
-            self.scene.addItem(rect_item)
+            # 2. 创建 CustomRectItem 时，明确指定父项
+            rect_item = CustomRectItem(rect_in_pixmap,
+                                       self,
+                                       label=lbl,
+                                       comment=comment_pose[index],
+                                       parent=self.pixmapItem)  # <-- 关键：设置父项
+
+            # 3. 不需要再调用 self.scene.addItem(rect_item)，因为父项会自动管理子项
             self.rect_items.append(rect_item)
 
         # 更新UI
@@ -936,8 +754,8 @@ class CustomRectItem(QGraphicsRectItem):
     default_pen_color = QColor(Qt.red)
     default_brush_color = QColor(Qt.transparent)
 
-    def __init__(self, rect: QRectF, img_win: IMG_WIN, label='', comment='', radio_start=1):
-        super().__init__(rect)
+    def __init__(self, rect: QRectF, img_win: IMG_WIN, label='', comment='', radio_start=1, parent=None):
+        super().__init__(rect, parent)
         self.pen_width = CustomRectItem.default_pen_width
         self.brush_color = CustomRectItem.default_brush_color
         self.pen_color = QColor(Qt.red)
@@ -961,9 +779,10 @@ class CustomRectItem(QGraphicsRectItem):
         self.setPen(self.pen)
         self.setBrush(self.brush)
 
-        self.resize_anchor = None
-        self.orig_rect = rect
-        self.orig_pos = QPointF(0, 0)
+        # 为调整大小操作初始化属性
+        self.initial_mouse_pos = QPointF()
+        self.initial_rect = QRectF()
+        self.initial_pos = QPointF()  # 为拖动操作初始化位置属性
 
         # 启用实时几何变化通知
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
@@ -995,6 +814,7 @@ class CustomRectItem(QGraphicsRectItem):
         if self.scene():
             self.scene().update()
 
+
     def paint(self, painter, option, widget):
         """重写paint方法，添加缺陷标签label，和缺陷位置信息"""
         super().paint(painter, option, widget)
@@ -1007,17 +827,17 @@ class CustomRectItem(QGraphicsRectItem):
         display_text = self.label
 
         # 实时计算宽高信息
-        top_left = self.mapToScene(self.rect().topLeft())
-        bottom_right = self.mapToScene(self.rect().bottomRight())
+        # top_left = self.mapToScene(self.rect().topLeft())
+        # bottom_right = self.mapToScene(self.rect().bottomRight())
 
-        x_min = int(self.pixmapItem.mapFromScene(top_left).x())
-        y_min = int(self.pixmapItem.mapFromScene(top_left).y())
-        x_max = int(self.pixmapItem.mapFromScene(bottom_right).x())
-        y_max = int(self.pixmapItem.mapFromScene(bottom_right).y())
+        # x_min = int(self.pixmapItem.mapFromScene(top_left).x())
+        # y_min = int(self.pixmapItem.mapFromScene(top_left).y())
+        # x_max = int(self.pixmapItem.mapFromScene(bottom_right).x())
+        # y_max = int(self.pixmapItem.mapFromScene(bottom_right).y())
 
-        width = abs(x_max - x_min)
-        height = abs(y_max - y_min)
-        display_text += f" (w, h)=({width},{height})"
+        # width = abs(x_max - x_min)
+        # height = abs(y_max - y_min)
+        # display_text += f" (w, h)=({width},{height})"
 
         # 绘制文本，位置在框的左上角上方
         text_position = self.rect().topLeft() + QPointF(0, -7)  # 调整位置偏移
