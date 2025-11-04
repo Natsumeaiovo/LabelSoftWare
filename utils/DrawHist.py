@@ -10,7 +10,7 @@ def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=F
     plt.figure(figsize=(8, 8))
     dpi = 100
     fig = plt.gcf()
-    fig.set_size_inches(291 / dpi, 261 / dpi)
+    fig.set_size_inches(350 / dpi, 261 / dpi)
 
     # 不留边框
     ax = plt.gca()

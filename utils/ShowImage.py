@@ -72,6 +72,7 @@ class IMG_WIN(QWidget):
         self.rect_info_raw = None
         # 当前 scene 中的所有矩形框列表
         self.rect_items: List[CustomRectItem] = []
+
         self.updating_selection = False
         self.is_dirty = False  # 添加一个脏标记
 

@@ -1,86 +1,168 @@
-/* 全局样式 - 提升文字对比度 */
+/* ========== 全局设置 ========== */
 QWidget {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     font-size: 12px;
-    color: #F0F0F0; /* 更亮的文字色，提升对比度 */
+}
+
+/* ========== 深色主题容器背景 ========== */
+QMainWindow, QDialog, QFrame, QWidget[windowType="main"] {
     background-color: #1A202C;
 }
 
-/* 解决QListWidget文字不可见问题 */
+/* ========== 列表控件 ========== */
 QListWidget {
     background-color: #1A202C;
     border: 1px solid #2D3748;
     border-radius: 5px;
     padding: 3px;
+    outline: none;
+    color: #F0F0F0;
 }
 
-/* 列表项强制设置文字色，确保与背景对比 */
 QListWidget::item {
-    color: #F0F0F0; /* 明确文字颜色 */
-    background-color: transparent; /* 继承父控件背景 */
+    color: #F0F0F0;
+    background-color: transparent;
     padding: 5px 8px;
     border-radius: 3px;
 }
 
 QListWidget::item:hover {
     background-color: #2D3748;
-    color: #F0F0F0; /*  hover时文字更亮 */
 }
 
 QListWidget::item:selected {
     background-color: #2B6CB0;
-    color: #FFFFFF; /* 选中时文字纯白，确保可见 */
+    color: #FFFFFF;
 }
 
-/* 解决QLabel直方图消失问题 
-   （避免样式覆盖QLabel的绘图区域，保持背景透明） */
+QListWidget::item:selected:hover {
+    background-color: #2C73D2;
+}
+
+/* ========== 分组框 ========== */
+QGroupBox {
+    border: 1px solid #2D3748;
+    border-radius: 6px;
+    margin-top: 2ex;
+    padding: 5px;
+    color: #F0F0F0;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px 3px 8px;
+    background-color: #1A202C;
+    border: 0.5px solid #2D3748;
+    border-radius: 4px;
+    color: #F0F0F0;
+    font-weight: bold;
+}
+
+/* ========== 单选按钮 (QRadioButton) ========== */
+QRadioButton {
+    spacing: 8px;
+    padding: 4px;
+    color: #FFFFFF; /* 文本始终白色 */
+    font-size: 12px;
+}
+
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #2B6CB0; /* 未选中：蓝色边框 */
+    background-color: transparent;
+    transition: all 0.2s ease;
+}
+
+QRadioButton::indicator:hover {
+    border-color: #2563EB;
+}
+
+QRadioButton::indicator:checked {
+    background-color: #2563EB; /* 选中：白色填充 */
+    border: 2px solid #2563EB; /* 选中：移除边框 */
+}
+
+QRadioButton::indicator:checked:hover {
+    background-color: #E2E8F0; /* 选中悬停：浅灰 */
+}
+
+/* ========== 复选框 (QCheckBox) ========== */
+QCheckBox {
+    spacing: 8px;
+    padding: 4px;
+    color: #F0F0F0;
+    font-size: 12px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 2px solid #1A202C;
+    background-color: #1A202C;
+    transition: all 0.2s ease;
+}
+
+QCheckBox::indicator:unchecked {
+    border-color: #565E6A;
+}
+
+QCheckBox::indicator:unchecked::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background-color: #FFFFFF;
+    opacity: 0.3;
+}
+
+QCheckBox::indicator:checked {
+    border-color: #2B6CB0;
+    background-color: transparent;
+}
+
+QCheckBox::indicator:checked::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background-color: #2B6CB0;
+    opacity: 1;
+}
+
+QCheckBox::indicator:checked:hover {
+    border-color: #2563EB;
+}
+
+/* ========== 标签 (QLabel) ========== */
 QLabel {
-    background-color: transparent; /* 关键：不设置固定背景色，避免覆盖绘制内容 */
-    color: #F0F0F0; /* 文字色保持可见 */
+    color: #F0F0F0;
+    background-color: transparent;
+    padding: 2px;
 }
 
-/* 仅图像显示区的QLabel设置背景（如果需要） */
 QLabel#imageDisplay {
-    background-color: #2D3748; /* 仅针对指定名称的图像显示Label */
+    background-color: #2D3748;
     border: 1px solid #4A5568;
     border-radius: 6px;
     margin: 10px;
     padding: 0;
 }
 
-/* 工具栏与按钮（保持之前的暗色调） */
-QToolBar {
-    background-color: #1F2937;
-    border: none;
-    border-bottom: 1px solid #2D3748;
-    spacing: 6px;
-    padding: 8px 12px;
-}
-
-QToolBar QToolButton {
-    width: 38px;
-    height: 38px;
-    border-radius: 6px;
-    background-color: #1A202C;
-    border: 1px solid transparent;
-    transition: all 0.2s ease;
-}
-
-QToolBar QToolButton:hover {
-    background-color: #2D3748;
-    border: 1px solid #4A90E2;
-}
-
-QToolBar QToolButton:pressed,
-QToolBar QToolButton:checked {
-    background-color: #2B6CB0;
-    border: 1px solid #2563EB;
-}
-
-/* 按钮样式 */
+/* ========== 按钮 (QPushButton) ========== */
 QPushButton {
     background-color: #2B6CB0;
-    color: white;
+    color: #FFFFFF;
     border: none;
     border-radius: 4px;
     padding: 6px 14px;
@@ -95,7 +177,62 @@ QPushButton:pressed {
     background-color: #1A365D;
 }
 
-/* 滑块样式 */
+/* ========== 工具栏 (QToolBar) ========== */
+QToolBar {
+    background-color: #1F2937;
+    border: none;
+    border-bottom: 1px solid #2D3748;
+    spacing: 6px;
+    padding: 8px 12px;
+}
+
+QToolBar QToolButton {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    background-color: #1A202C;
+    border: 1px solid transparent;
+    color: #F0F0F0;
+    transition: all 0.2s ease;
+}
+
+QToolBar QToolButton:hover {
+    background-color: #2D3748;
+    border: 1px solid #4A90E2;
+}
+
+QToolBar QToolButton:pressed,
+QToolBar QToolButton:checked {
+    background-color: #2B6CB0;
+    border: 1px solid #2563EB;
+}
+
+/* ========== 输入控件 ========== */
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #1A202C;
+    border: 1px solid #2D3748;
+    color: #F0F0F0;
+    padding: 5px 8px;
+    border-radius: 4px;
+}
+
+QLineEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus,
+QComboBox:focus {
+    border-color: #2B6CB0;
+    background-color: #1E293B;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #1A202C;
+    color: #F0F0F0;
+    selection-background-color: #2B6CB0;
+    border: 1px solid #2D3748;
+    padding: 2px;
+}
+
+/* ========== 滑块控件 ========== */
 QSlider::groove:horizontal {
     height: 6px;
     background-color: #2D3748;
@@ -111,31 +248,48 @@ QSlider::handle:horizontal {
     border: 1px solid #1A365D;
 }
 
-/* 其他控件保持兼容性 */
+QSlider::handle:horizontal:hover {
+    background-color: #2563EB;
+}
+
+/* ========== 表格与树形控件 ========== */
 QTreeWidget, QTableWidget {
     background-color: #1A202C;
     border: 1px solid #2D3748;
     border-radius: 5px;
     padding: 3px;
+    outline: none;
+    color: #F0F0F0;
 }
 
 QTreeWidget::item, QTableWidget::item {
     color: #F0F0F0;
     padding: 5px 8px;
+    border-radius: 3px;
+}
+
+QTreeWidget::item:hover, QTableWidget::item:hover {
+    background-color: #2D3748;
 }
 
 QTreeWidget::item:selected, QTableWidget::item:selected {
     background-color: #2B6CB0;
-    color: white;
+    color: #FFFFFF;
 }
 
-QLineEdit, QSpinBox, QDoubleSpinBox {
+/* ========== 滚动条 ========== */
+QScrollBar:vertical {
+    width: 12px;
     background-color: #1A202C;
-    border: 1px solid #2D3748;
-    color: #F0F0F0;
-    padding: 5px 8px;
+    border-radius: 6px;
 }
 
-QLineEdit:focus, QSpinBox:focus {
-    border-color: #2B6CB0;
+QScrollBar::handle:vertical {
+    background-color: #2D3748;
+    border-radius: 6px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #4A5568;
 }

@@ -11,8 +11,13 @@ Function of the program:
 
 import json
 import os
-
+import xml.etree.ElementTree as ET
+import xml.dom.minidom as minidom
+import json
 import pydicom
+from openpyxl.styles.builtins import output
+
+from utils import FromXML
 from PySide2 import QtCore
 from PySide2 import QtGui
 from PySide2.QtCore import Signal, QObject, QThread, QTimer
@@ -428,13 +433,16 @@ class GUI(QMainWindow):
             self.window_left = self.img.min()
             self.window_right = self.img.max()
 
+            if image_info:
+                self.ui.reverseButton.setChecked(image_info['reverse_checked'])
+
             # 如果反色了
             if self.ui.reverseButton.isChecked() is True:
                 # 如果item改变了
-                self.ui.min_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
-                self.ui.max_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
+                self.ui.min_slider.setRange(max_val - self.img.max(), max_val - self.img.min())
+                self.ui.max_slider.setRange(max_val - self.img.max(), max_val - self.img.min())
                 self.ui.window_width_slider.setRange(0, self.img.max() - self.img.min())
-                self.ui.window_level_slider.setRange(65535 - self.img.max(), 65535 - self.img.min())
+                self.ui.window_level_slider.setRange(max_val - self.img.max(), max_val - self.img.min())
             else:
                 self.ui.min_slider.setRange(self.img.min(), self.img.max())
                 self.ui.max_slider.setRange(self.img.min(), self.img.max())
@@ -442,7 +450,6 @@ class GUI(QMainWindow):
                 self.ui.window_level_slider.setRange(self.img.min(), self.img.max())
 
             if image_info:
-                self.ui.reverseButton.setChecked(image_info['reverse_checked'])
                 self.ui.window_width_slider.setValue(image_info['window_width'])
                 self.ui.window_level_slider.setValue(image_info['window_level'])
             else:
@@ -514,7 +521,7 @@ class GUI(QMainWindow):
         save_img_tmp_info(self.filePath, window_width, window_level, reverse_checked)
 
     # 更新img_win
-    def update_ui(self, array):
+    def update_ui(self, array, clear=False):
         if self.ui.spinBox_1.value() != 0:
             if self.ui.radioButton_enhance.isChecked() is True:
                 array = EnhanceImage.apply_clahe(array, self.ui.spinBox_1.value(),
@@ -526,7 +533,7 @@ class GUI(QMainWindow):
             # array = EnhanceImage.rawimg_enhance(array, self.ui.spinBox_1.value(), self.ui.spinBox_2.value(), self.ui.spinBox_3.value())
         array = self.img_quick_trans(self.quick_trans_method, array)
         self.img_enhanced = array
-        self.img_win.addScenes(array, self.filePath, False, self.ui.merge_anno.isChecked())
+        self.img_win.addScenes(array, self.filePath, clear, self.ui.merge_anno.isChecked())
         # self.ongoing = False
 
     # 图像正反色处理，修改了img为其反色，重新绘制了灰度直方图，根据参数更新slider的值
@@ -571,7 +578,80 @@ class GUI(QMainWindow):
         if not self.img_win.is_dirty and self.auto_save_timer.isActive():
             return
 
-        print("保存标注！")
+        def is_fully_contained(obj_bbox, exclude_rect):
+            """
+            检查object的bbox是否完全被exclude_rect包含
+            """
+            obj_xmin, obj_ymin, obj_xmax, obj_ymax = obj_bbox
+            excl_xmin, excl_ymin, excl_xmax, excl_ymax = exclude_rect
+
+            return (obj_xmin >= excl_xmin and obj_ymin >= excl_ymin and
+                    obj_xmax <= excl_xmax and obj_ymax <= excl_ymax)
+
+        def process_xml_with_exclude(xml_file_path, config_file_path, output_file_path):
+            """
+            处理XML文件，根据config.json中的exclude_pix过滤object
+            """
+            # 读取config.json
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            exclude_pix = config.get('exclude_pix', [])
+
+            # 解析XML文件
+            tree = ET.parse(xml_file_path)
+            root = tree.getroot()
+
+            # 查找所有的object元素
+            objects = root.findall('object')
+            objects_to_keep = []
+
+            # 检查每个object是否应该保留
+            for obj in objects:
+                bndbox = obj.find('bndbox')
+                if bndbox is not None:
+                    xmin = float(bndbox.find('xmin').text)
+                    ymin = float(bndbox.find('ymin').text)
+                    xmax = float(bndbox.find('xmax').text)
+                    ymax = float(bndbox.find('ymax').text)
+
+                    obj_bbox = (xmin, ymin, xmax, ymax)
+
+                    # 检查是否被任意一个exclude区域完全包含
+                    should_keep = False
+                    for exclude_rect in exclude_pix:
+                        if is_fully_contained(obj_bbox, exclude_rect):
+                            should_keep = True
+                            break
+
+                    if should_keep:
+                        objects_to_keep.append(obj)
+
+            # 移除所有原有的object
+            for obj in objects:
+                root.remove(obj)
+
+            # 添加需要保留的object
+            for obj in objects_to_keep:
+                root.append(obj)
+
+            # 保存新的XML文件
+            tree.write(output_file_path, encoding='utf-8', xml_declaration=True)
+            print(f"处理完成！保留了 {len(objects_to_keep)} 个object，已保存到 {output_file_path}")
+
+        # 文件路径
+        # 去掉原文件的扩展名，加上 .xml
+        base_name = os.path.splitext(os.path.basename(self.filePath))[0]
+        xml_file_path = os.path.join(self.xml_path, base_name + ".xml")
+        output_file_path = ""
+        if self.ui.auto_exclude_pix.isChecked() and os.path.exists(xml_file_path):
+            config_file_path = "Sources/config.json"
+            output_file_path = "Sources/temp.xml"
+            # 确保输出目录存在
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            # 处理XML文件
+            process_xml_with_exclude(xml_file_path, config_file_path, output_file_path)
+
         file_name = os.path.basename(self.filePath)  # 从路径中提取文件名
         self.set_item_viewed(self.ui.listWidget_dcm_name, file_name, True)
         items = self.img_win.get_scene_items()
@@ -583,10 +663,141 @@ class GUI(QMainWindow):
         # print(rect_items, len(rect_items))
         pixmapItem = self.img_win.get_pixmapItem()
         ToXML5D0.CreatSaveXml.creat_xml(self.filePath, items, rect_items, self.img.shape, pixmapItem, isManual=True)
+
+        if self.ui.auto_exclude_pix.isChecked() and os.path.exists(xml_file_path):
+            def parse_bndbox(bndbox_element):
+                """解析bndbox元素，返回坐标元组"""
+                xmin = float(bndbox_element.find('xmin').text)
+                ymin = float(bndbox_element.find('ymin').text)
+                xmax = float(bndbox_element.find('xmax').text)
+                ymax = float(bndbox_element.find('ymax').text)
+                return (xmin, ymin, xmax, ymax)
+
+            def bndbox_equal(bbox1, bbox2, tolerance=1e-5):
+                """比较两个bndbox是否相等，考虑浮点数精度"""
+                return (abs(bbox1[0] - bbox2[0]) < tolerance and
+                        abs(bbox1[1] - bbox2[1]) < tolerance and
+                        abs(bbox1[2] - bbox2[2]) < tolerance and
+                        abs(bbox1[3] - bbox2[3]) < tolerance)
+
+            def object_exists_in_list(obj, obj_list):
+                """检查object是否在对象列表中（基于bndbox坐标）"""
+                obj_bndbox = parse_bndbox(obj.find('bndbox'))
+
+                for existing_obj in obj_list:
+                    existing_bndbox = parse_bndbox(existing_obj.find('bndbox'))
+                    if bndbox_equal(obj_bndbox, existing_bndbox):
+                        return True
+                return False
+
+            def merge_xml_files(base_xml_path, additional_xml_path, output_path=None):
+                """
+                合并两个XML文件
+
+                参数:
+                base_xml_path: 基准XML文件路径
+                additional_xml_path: 要合并的XML文件路径
+                output_path: 输出文件路径，如果为None则覆盖基准文件
+                """
+                # 如果输出路径未指定，则覆盖基准文件
+                if output_path is None:
+                    output_path = base_xml_path
+
+                # 解析基准XML文件
+                try:
+                    base_tree = ET.parse(base_xml_path)
+                    base_root = base_tree.getroot()
+                except Exception as e:
+                    print(f"错误: 无法解析基准XML文件 {base_xml_path}: {e}")
+                    return False
+
+                # 解析要合并的XML文件
+                try:
+                    additional_tree = ET.parse(additional_xml_path)
+                    additional_root = additional_tree.getroot()
+                except Exception as e:
+                    print(f"错误: 无法解析要合并的XML文件 {additional_xml_path}: {e}")
+                    return False
+
+                # 获取基准文件中的所有object
+                base_objects = base_root.findall('object')
+
+                # 获取要合并文件中的所有object
+                additional_objects = additional_root.findall('object')
+
+                # 统计信息
+                added_count = 0
+                skipped_count = 0
+
+                # 遍历要合并的objects
+                for add_obj in additional_objects:
+                    # 检查该object是否已在基准文件中存在
+                    if not object_exists_in_list(add_obj, base_objects):
+                        # 如果不存在，则添加到基准文件的root中
+                        base_root.append(add_obj)
+                        added_count += 1
+                        print(
+                            f"添加object: {add_obj.find('name').text} - bndbox: {parse_bndbox(add_obj.find('bndbox'))}")
+                    else:
+                        skipped_count += 1
+                        print(
+                            f"跳过已存在的object: {add_obj.find('name').text} - bndbox: {parse_bndbox(add_obj.find('bndbox'))}")
+
+                # 保存合并后的XML文件
+                try:
+                    # 确保输出目录存在
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                    # 保存XML文件
+                    base_tree.write(output_path, encoding='utf-8', xml_declaration=True)
+
+                    print(f"\n合并完成!")
+                    print(f"添加了 {added_count} 个新object")
+                    print(f"跳过了 {skipped_count} 个已存在的object")
+                    print(f"结果已保存到: {output_path}")
+
+                    return True
+
+                except Exception as e:
+                    print(f"错误: 无法保存合并后的XML文件 {output_path}: {e}")
+                    return False
+
+            # 执行合并
+            success = merge_xml_files(xml_file_path, output_file_path)
+
         self.image_name_list.update_item_status(self.ui.listWidget_dcm_name, file_name)
 
+        # 重新加载xml
+        window_level = self.ui.window_level_slider.value()  # 窗位
+        window_width = self.ui.window_width_slider.value()  # 窗宽
+        reverse_checked = self.ui.reverseButton.isChecked()  # 是否反色
+        print("窗位：", window_level, "窗宽：", window_width)
+        if isinstance(self.img, np.ndarray) and self.img.size > 0:
+            array = self.img
+            array_orl = self.img
+            # if self.ui.spinBox_3.value() != 0:
+            #     array = EnhanceImage.unsharp_mask(array, self.ui.spinBox_3.value(),
+            #                                      self.ui.spinBox_4.value(),(int(self.ui.spinBox_5.value()),int(self.ui.spinBox_5.value())))
+            self.ui.enhance_label_1.setText(f'对比限制:{self.ui.spinBox_1.value()}')
+            self.ui.enhance_label_2.setText(f'对比区域:{self.ui.spinBox_2.value()}')
+            self.ui.enhance_label_3.setText(f'图像锐化:{self.ui.spinBox_3.value()}')
+
+            # 如果图像增强按钮按下了
+            if self.ui.radioButton_enhance.isChecked() is True:
+                # array = EnhanceImage.high_frequency_emphasis(array, self.ui.spinBox_3.value(),
+                #                                  self.ui.spinBox_4.value(),self.ui.spinBox_5.value())
+                array = cv2.GaussianBlur(array, (13, 13), 0)
+                array = cv2.addWeighted(array_orl, self.ui.spinBox_3.value(), array, 1 - self.ui.spinBox_3.value(),
+                                        0)
+
+            array = WindowImage.window_image(array, window_level, window_width)
+            self.update_ui(array, True)
+
+        # 保存当前界面信息
+        save_img_tmp_info(self.filePath, window_width, window_level, reverse_checked)
         # 保存成功后，重置脏标记
         self.img_win.set_dirty(False)
+
 
     def auto_save_xml(self, checked):
         if self.ui.merge_anno.isChecked():
@@ -887,8 +1098,8 @@ if __name__ == '__main__':
     app = QApplication([])
     My_ui = GUI()
     # style_file = 'QSS-master/MacOS.qss'
-    # style_file = 'QSS-master/pic.qss'
-    style_file = 'QSS-master/MaterialDark.qss'
+    style_file = 'QSS-master/pic.qss'
+    # style_file = 'QSS-master/MaterialDark.qss'
     # style_file = 'QSS-master/ManjaroMix.qss'
     # style_file = 'QSS-master/Ubuntu.qss'
     # style_file = 'QSS-master/Aqua.qss'
