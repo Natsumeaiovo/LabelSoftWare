@@ -19,22 +19,25 @@ from PySide2 import QtWidgets
 from PySide2.QtCore import Qt, QRectF, QPointF
 from PySide2.QtGui import QPen, QBrush, QColor
 from PySide2.QtGui import Qt
+from PySide2.QtUiTools import QUiLoader
 from PySide2.QtWidgets import QDialog, QListWidget
 from PySide2.QtWidgets import QGraphicsView, QGraphicsRectItem, QGraphicsItem, QColorDialog, QInputDialog, QMenu
 from PySide2.QtWidgets import QWidget, QListWidgetItem, QGraphicsPixmapItem
 
 from utils import FromXML
-from utils import ToXML5D0
+from utils.ShowDCMName import ImageNameList
 from widgets.LabelDialog import LabelDialog
 
 
 class IMG_WIN(QWidget):
-    def __init__(self, graphicsView: QGraphicsView, listWidget: QListWidget):
+    def __init__(self, ui, image_name_list: ImageNameList):
         super().__init__()
         self.img = None
-        self.graphicsView = graphicsView
-        self.listWidget = listWidget
+        self.ui = ui
+        self.graphicsView = ui.graphicsView
+        self.listWidget = ui.listWidget_label
         self.is_merge = None
+        self.image_name_list = image_name_list
 
         self.graphicsView.setStyleSheet("padding: 0px; border: 0px;")  # 内边距和边界去除
         self.scene = QtWidgets.QGraphicsScene(self)
@@ -366,6 +369,7 @@ class IMG_WIN(QWidget):
                     self.current_rect = None
                     # 恢复正常模式
                     self.set_exclude_mode(False)
+                    self.image_name_list.check_dcm_status(self.ui.listWidget_dcm_name)
                 else:
                     # --- 正常标注 ---
                     self.label_and_comment_dialog()

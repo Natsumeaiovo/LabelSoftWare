@@ -11,6 +11,8 @@ Function of the program:
 
 import os
 import re
+import json
+import xml.etree.ElementTree as ET
 
 from PySide2 import QtCore
 from PySide2.QtGui import QIcon, QPixmap
@@ -18,20 +20,76 @@ from PySide2.QtWidgets import QMainWindow, QListWidget, QListWidgetItem, QWidget
 
 
 class ImageNameList(QMainWindow):
-    def __init__(self, list_widget: QListWidget):
+    def __init__(self, list_widget: QListWidget, auto_exclude_pix):
         super().__init__()
         self.list_widget = list_widget
         self.list_widget.setIconSize(QtCore.QSize(8, 8))
+        self.auto_exclude_pix = auto_exclude_pix
+
+    def is_fully_contained(self, obj_bbox, exclude_rect):
+        """
+        检查object的bbox是否完全被exclude_rect包含
+        """
+        obj_xmin, obj_ymin, obj_xmax, obj_ymax = obj_bbox
+        excl_xmin, excl_ymin, excl_xmax, excl_ymax = exclude_rect
+
+        return (obj_xmin >= excl_xmin and obj_ymin >= excl_ymin and
+                obj_xmax <= excl_xmax and obj_ymax <= excl_ymax)
+
+    def process_xml_with_exclude(self, xml_file_path, config_file_path, output_file_path):
+        """
+        处理XML文件，根据config.json中的exclude_pix过滤object
+        """
+        # 读取config.json
+        with open(config_file_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        exclude_pix = config.get('exclude_pix', [])
+
+        # 解析XML文件
+        tree = ET.parse(xml_file_path)
+        root = tree.getroot()
+
+        # 查找所有的object元素
+        objects = root.findall('object')
+        objects_to_keep = []
+
+        # 检查每个object是否应该保留
+        for obj in objects:
+            bndbox = obj.find('bndbox')
+            if bndbox is not None:
+                xmin = float(bndbox.find('xmin').text)
+                ymin = float(bndbox.find('ymin').text)
+                xmax = float(bndbox.find('xmax').text)
+                ymax = float(bndbox.find('ymax').text)
+
+                obj_bbox = (xmin, ymin, xmax, ymax)
+
+                # 检查是否被任意一个exclude区域完全包含
+                should_keep = False
+                for exclude_rect in exclude_pix:
+                    if self.is_fully_contained(obj_bbox, exclude_rect):
+                        should_keep = True
+                        break
+
+                if should_keep:
+                    objects_to_keep.append(obj)
+        return len(objects_to_keep)
+
 
     def check_xml_has_object(self, xml_file_path: str) -> bool:
         """检查XML文件是否包含object标签"""
         try:
-            import xml.etree.ElementTree as ET
             tree = ET.parse(xml_file_path)
             root = tree.getroot()
             # 查找所有object标签
-            objects = root.findall('.//object')
-            return len(objects) > 0
+            objects_len = len(root.findall('.//object'))
+            if self.auto_exclude_pix.isChecked():
+                print("ppdfklfdlfkdsfdfd")
+                config_file_path = "Sources/config.json"
+                objects_to_exclude = self.process_xml_with_exclude(xml_file_path, config_file_path, xml_file_path)
+                objects_len = objects_len - objects_to_exclude
+            return objects_len>0
         except Exception as e:
             print(f"检查XML文件出错: {e}")
             return False

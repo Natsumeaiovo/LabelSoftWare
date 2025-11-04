@@ -201,9 +201,9 @@ class GUI(QMainWindow):
         self.ongoing = False
         self.window_left = 0
         self.window_right = 65535
-
+        self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name, self.ui.auto_exclude_pix)
         # self.graphics_view_layout = QVBoxLayout(self.ui.graphicsView)
-        self.img_win: IMG_WIN = ShowImage.IMG_WIN(self.ui.graphicsView, self.ui.listWidget_label)  # 实例化IMG_WIN类
+        self.img_win: IMG_WIN = ShowImage.IMG_WIN(self.ui, self.image_name_list)  # 实例化IMG_WIN类
         # self.graphics_view_layout.addWidget(self.graphic)
         # self.graphics_view_layout.addWidget(self.graphic)
 
@@ -216,7 +216,7 @@ class GUI(QMainWindow):
                                                  self.ui.window_width_label, self.ui.window_level_label,
                                                  self.ui.histogram, self.ui.reverseButton)
 
-        self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
+        # self.image_name_list = ShowDCMName.ImageNameList(self.ui.listWidget_dcm_name)
 
         """
         点击图片名 连接并传递一个QListWidgetItem 对象给 show_img 方法作为其参数。
@@ -396,6 +396,8 @@ class GUI(QMainWindow):
 
         # 如果传了item参数(图片)，那么更改filePath为item的地址，并且不变换slider
         if filePath is not None:
+            file_name = os.path.basename(filePath)  # 从路径中提取文件名
+            self.image_name_list.update_item_status(self.ui.listWidget_dcm_name, file_name)
             is_item_changed = True
             # 如果filePath不为空，那么从filePath读取img
             _, file_extension = os.path.splitext(self.filePath)
@@ -851,6 +853,8 @@ class GUI(QMainWindow):
         except IOError as e:
             print(f"保存配置文件 '{config_path}' 失败: {e}")
 
+        if self.filePath:
+            self.image_name_list.check_dcm_status(self.ui.listWidget_dcm_name)
         # 更新 IMG_WIN 的状态并刷新标注
         self.img_win.set_auto_exclude_enabled(checked)
         self.img_win.refresh_annotations()
@@ -878,9 +882,10 @@ class GUI(QMainWindow):
         except IOError as e:
             print(f"保存配置文件失败: {e}")
             return
-
+        self.image_name_list.check_dcm_status(self.ui.listWidget_dcm_name)
         # 通知 IMG_WIN 更新其内部状态并刷新标注
         self.img_win.clear_and_refresh_exclusions()
+
 
     def select_and_save_path(self, config_key, dialog_title):
         """
