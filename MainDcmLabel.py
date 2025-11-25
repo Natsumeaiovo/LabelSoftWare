@@ -807,6 +807,7 @@ class GUI(QMainWindow):
     def auto_save_xml(self, checked):
         if self.ui.merge_anno.isChecked():
             return
+        self.save_xml()
         if checked:
             # 启动定时器前，确保初始状态是干净的
             self.img_win.set_dirty(False)
@@ -1184,7 +1185,6 @@ class GUI(QMainWindow):
 
             # 3. 将 Pillow 图像转换回 OpenCV 格式
             image_to_save = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-            # --- 修正结束 ---
 
             # 5. 确定文件名并保存图像
             base_name = os.path.basename(self.filePath)

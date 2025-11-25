@@ -10,7 +10,7 @@ Function of the program: 显示图片，缩放图片，并进行标签框添加
 """
 import json
 import os
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 from PySide2 import QtCore
@@ -52,6 +52,12 @@ class IMG_WIN(QWidget):
         self.scene.mouseMoveEvent = self.scene_mouseMoveEvent
         self.scene.wheelEvent = self.scene_wheelEvent
 
+        self.graphicsView.setMouseTracking(True)
+        self.graphicsView.viewport().setMouseTracking(True)
+        self.graphicsView.setFocusPolicy(Qt.StrongFocus)
+        self.graphicsView.installEventFilter(self)
+        self.graphicsView.viewport().installEventFilter(self)
+
         self.listWidget.itemSelectionChanged.connect(self.on_list_selection_changed)
         self.listWidget.itemChanged.connect(self.on_item_changed)
         self.scene.selectionChanged.connect(self.on_rect_selection_changed)
@@ -77,6 +83,7 @@ class IMG_WIN(QWidget):
         self.rect_items: List[CustomRectItem] = []
         self.updating_selection = False
         self.is_dirty = False  # 添加一个脏标记
+        self.hovered_rect: Optional[CustomRectItem] = None
 
         self.is_excluding_pixels = False  # 是否处于“选择排除区域”模式
         self.exclude_rects = []  # 存储排除区域的列表
@@ -246,7 +253,7 @@ class IMG_WIN(QWidget):
                         print(f"标注 '{lbl}' 位于排除区域，已忽略。")
                         continue  # 跳过此标注
                         # 直接使用原始图像坐标，因为 CustomRectItem 现在是 pixmapItem 的子项
-                        # 其坐标系相对于父项。父项的缩放和移动会自动应用到子项。
+                    # 其坐标系相对于父项。父项的缩放和移动会自动应用到子项。
                     rect_in_pixmap = QRectF(QPointF(current_xmin, current_ymin),
                                             QPointF(current_xmax, current_ymax))
                     self.current_rect = CustomRectItem(rect_in_pixmap, self,
@@ -414,6 +421,7 @@ class IMG_WIN(QWidget):
 
         item = self.graphicsView.itemAt(event.scenePos().toPoint())
         if isinstance(item, CustomRectItem):
+            self._set_hover_rect(item)
             if self.moving:
                 # 1. 计算鼠标从按下开始的总位移（场景坐标系）
                 total_scene_delta = event.scenePos() - self.preMousePosition  # preMousePosition 在按下时已设为初始位置
@@ -432,6 +440,7 @@ class IMG_WIN(QWidget):
 
             self.graphicsView.setCursor(item.get_cursor_shape(event.scenePos()))
         else:
+            self._clear_hover_state()
             self.graphicsView.setCursor(Qt.ArrowCursor)
 
         # if Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
@@ -752,13 +761,58 @@ class IMG_WIN(QWidget):
         self.scene.update()
         print("标注框已根据排除设置刷新。")
 
+    def eventFilter(self, obj, event):
+        if obj in (self.graphicsView, self.graphicsView.viewport()):
+            if event.type() == QtCore.QEvent.MouseMove:
+                if self.drawing or self.moving or self.resizing:
+                    self._clear_hover_state()
+                else:
+                    self._update_hover_state(event)
+            elif event.type() == QtCore.QEvent.Leave:
+                self._clear_hover_state()
+            elif event.type() == QtCore.QEvent.KeyPress and event.key() == Qt.Key_Delete:
+                if self.hovered_rect and not self.is_merge:
+                    self.hovered_rect.delete_item()
+                    self.hovered_rect = None
+                    return True
+        return super().eventFilter(obj, event)
+
+    def _update_hover_state(self, event):
+        scene_pos = self.graphicsView.mapToScene(event.pos())
+        item = self.scene.itemAt(scene_pos, QtGui.QTransform())
+        if isinstance(item, CustomRectItem):
+            if item is not self.hovered_rect:
+                if self.hovered_rect:
+                    self.hovered_rect.set_hovered(False)
+                self.hovered_rect = item
+                self.hovered_rect.set_hovered(True)
+        else:
+            self._clear_hover_state()
+
+    def _clear_hover_state(self):
+        if self.hovered_rect:
+            self.hovered_rect.set_hovered(False)
+            self.hovered_rect = None
+
+    def _set_hover_rect(self, rect_item: Optional['CustomRectItem']):
+        if self.drawing or self.moving or self.resizing:
+            self._clear_hover_state()
+            return
+        if rect_item is self.hovered_rect:
+            return
+        if self.hovered_rect:
+            self.hovered_rect.set_hovered(False)
+        self.hovered_rect = rect_item
+        if self.hovered_rect:
+            self.hovered_rect.set_hovered(True)
+
 
 class CustomRectItem(QGraphicsRectItem):
-    default_pen_width = 2
+    default_pen_width = 1
     default_pen_color = QColor(Qt.red)
     default_brush_color = QColor(Qt.transparent)
 
-    def __init__(self, rect: QRectF, img_win: IMG_WIN, label='', comment='', radio_start=1, parent=None):
+    def __init__(self, rect: QRectF, img_win: 'IMG_WIN', label='', comment='', radio_start=1, parent=None):
         super().__init__(rect, parent)
         self.pen_width = CustomRectItem.default_pen_width
         self.brush_color = CustomRectItem.default_brush_color
@@ -791,6 +845,9 @@ class CustomRectItem(QGraphicsRectItem):
         # 启用实时几何变化通知
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
 
+        self.is_hovered = False
+        self.hover_pen = QPen(QColor(Qt.white), max(self.pen_width + 1, 2))
+
 
     @property
     def comment(self):
@@ -820,12 +877,15 @@ class CustomRectItem(QGraphicsRectItem):
 
 
     def paint(self, painter, option, widget):
-        """重写paint方法，添加缺陷标签label，和缺陷位置信息"""
+        if self.is_hovered:
+            painter.setPen(self.hover_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(self.rect())
         super().paint(painter, option, widget)
         painter.setPen(self.default_pen_color)
         font = painter.font()
         font.setFamily("Microsoft YaHei")
-        font.setPointSize(12)
+        font.setPointSize(6)
         painter.setFont(font)
         # 构建要显示的文本
         display_text = self.label
@@ -844,7 +904,7 @@ class CustomRectItem(QGraphicsRectItem):
         # display_text += f" (w, h)=({width},{height})"
 
         # 绘制文本，位置在框的左上角上方
-        text_position = self.rect().topLeft() + QPointF(0, -7)  # 调整位置偏移
+        text_position = self.rect().topLeft() + QPointF(0, -5)  # 调整位置偏移
         painter.drawText(text_position, display_text)
         # self.update_info(True)    # 会导致循环调用
 
@@ -968,6 +1028,7 @@ class CustomRectItem(QGraphicsRectItem):
                 self.img_win.rect_items.remove(self)
                 self.img_win.update_rect_items(True)
                 self.img_win.set_dirty()  # 删除后设置脏标记
+                scene.update()
 
     def change_to_manual(self):
         """修改为人工标注"""
@@ -1015,3 +1076,8 @@ class CustomRectItem(QGraphicsRectItem):
     def update_info_label(self, label, comment):
         self.label = label
         self.comment = comment
+
+    def set_hovered(self, hovered: bool):
+        self.is_hovered = hovered
+        self.update()
+

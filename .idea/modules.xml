@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/LabelSoftWare.iml" filepath="$PROJECT_DIR$/.idea/LabelSoftWare.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/LabelSoftware.iml" filepath="$PROJECT_DIR$/.idea/LabelSoftware.iml" />
     </modules>
   </component>
 </project>

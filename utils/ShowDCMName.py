@@ -120,7 +120,6 @@ class ImageNameList(QMainWindow):
 
             for file_name in file_names:
                 if file_name.endswith((".dcm", ".png", ".jpg", ".bmp", ".tif", ".tiff")):
-                    print(file_name, "file_name")
                     # 创建一个QListWidgetItem对象
                     item = QListWidgetItem(file_name)
                     # 将item添加到list_widget
