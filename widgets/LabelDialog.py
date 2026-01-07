@@ -11,9 +11,9 @@ from utils.QSSLoader import QSSLoader
 class LabelDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Enter Label and Comment:")
+        self.setWindowTitle("输入标签、备注、评级:")
         self.setFixedWidth(300)  # 窗口宽度
-        self.setFixedHeight(150)  # 窗口高度
+        self.setFixedHeight(190)  # 窗口高度（增加 level 输入后调高）
         self.setFont(QtGui.QFont("MicroSoft YaHei", 10))
 
         # 主布局
@@ -21,15 +21,23 @@ class LabelDialog(QDialog):
 
         # 表单布局
         form_layout = QFormLayout()
+
+        # 标签输入
         self.label_combo = QComboBox(self)
         self.label_combo.setFixedHeight(30)  # 调整组件高度
         self.load_labels()
 
+        # comment 输入
         self.comment_edit = QLineEdit(self)
         self.comment_edit.setFixedHeight(30)  # 调整组件高度
 
-        form_layout.addRow("Label:", self.label_combo)
-        form_layout.addRow("Comment:", self.comment_edit)
+        # Level（级别）输入：使用 QLineEdit，不设置默认值
+        self.level_edit = QLineEdit(self)
+        self.level_edit.setFixedHeight(30)
+
+        form_layout.addRow("标签:", self.label_combo)
+        form_layout.addRow("备注:", self.comment_edit)
+        form_layout.addRow("评级:", self.level_edit)
 
         # 确定按钮
         self.ok_button = QPushButton("完成", self)
@@ -62,4 +70,8 @@ class LabelDialog(QDialog):
             pass
 
     def get_values(self):
-        return self.label_combo.currentText(), self.comment_edit.text()
+        return (
+            self.label_combo.currentText(),
+            self.comment_edit.text(),
+            self.level_edit.text().strip(),
+        )

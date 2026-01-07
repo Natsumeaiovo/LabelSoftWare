@@ -44,9 +44,12 @@ class CreatSaveXml():
             if using == "dcm":
                 ET.SubElement(object, "name").text = str(item.label)
                 ET.SubElement(object, "pose").text = str(item.comment)
+                # 新增 level 字段（兼容旧对象：没有 level 时写默认值 0）
+                ET.SubElement(object, "level").text = str(getattr(item, "level", "0"))
             else:
                 ET.SubElement(object, "name").text = str(item)
                 ET.SubElement(object, "pose").text = str("自动检测")
+                ET.SubElement(object, "level").text = "0"
             ET.SubElement(object, "truncated").text = "None"
             ET.SubElement(object, "difficult").text = "None"
 

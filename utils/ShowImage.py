@@ -17,7 +17,7 @@ from PySide2 import QtCore
 from PySide2 import QtGui
 from PySide2 import QtWidgets
 from PySide2.QtCore import Qt, QRectF, QPointF
-from PySide2.QtGui import QPen, QBrush, QColor
+from PySide2.QtGui import QPen, QBrush, QColor, QIcon
 from PySide2.QtGui import Qt
 from PySide2.QtUiTools import QUiLoader
 from PySide2.QtWidgets import QDialog, QListWidget
@@ -217,7 +217,7 @@ class IMG_WIN(QWidget):
                 analysis_result = FromXML.analysis_xml(path=path_xml, return_size=True)
                 if not analysis_result:
                     return
-                label, xmin, ymin, xmax, ymax, comment_pose, size = analysis_result
+                label, xmin, ymin, xmax, ymax, comment_pose, level, size = analysis_result
                 img_width, img_height = size
 
                 if not all([label, xmin, ymin, xmax, ymax]):
@@ -228,7 +228,7 @@ class IMG_WIN(QWidget):
                 for i in range(len(label)):
                     boxes.append([
                         float(xmin[i]), float(ymin[i]), float(xmax[i]), float(ymax[i]),
-                        label[i], comment_pose[i]
+                        label[i], comment_pose[i], level[i]
                     ])
 
                 # 如果merge为True，执行合并逻辑
@@ -241,8 +241,9 @@ class IMG_WIN(QWidget):
                     xmax = [str(b[2]) for b in boxes]
                     ymax = [str(b[3]) for b in boxes]
                     comment_pose = [b[5] for b in boxes]
+                    level = [str(b[6]) for b in boxes]
 
-                self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
+                self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose, level]
                 print(label, xmin, ymin, xmax, ymax)
 
                 for index, lbl in enumerate(label):
@@ -257,12 +258,13 @@ class IMG_WIN(QWidget):
                     rect_in_pixmap = QRectF(QPointF(current_xmin, current_ymin),
                                             QPointF(current_xmax, current_ymax))
                     self.current_rect = CustomRectItem(rect_in_pixmap, self,
-                                                       label=lbl, comment=comment_pose[index],
+                                                       label=lbl, comment=comment_pose[index], level=level[index],
                                                        parent=self.pixmapItem)  # 设置父项
                     # self.scene.addItem(self.current_rect) # 不再需要，因为父项已在场景中
 
                     self.current_rect.label = lbl
                     self.current_rect.comment = comment_pose[index]
+                    self.current_rect.level = level[index]
                     self.current_rect.radio_start = self.ratio
                     self.rect_items.append(self.current_rect)
                     self.update_rect_items(True)
@@ -276,6 +278,7 @@ class IMG_WIN(QWidget):
         xmaxs = []
         ymaxs = []
         comments = []
+        levels = []
 
         for item in self.rect_items:
             # item.rect() 直接返回相对于父项(pixmapItem)的坐标，这正是我们需要的原始坐标
@@ -291,10 +294,9 @@ class IMG_WIN(QWidget):
             xmaxs.append(str(x_max))
             ymaxs.append(str(y_max))
             comments.append(item.comment)
+            levels.append(str(getattr(item, "level", "0")))
 
-
-
-        self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments]
+        self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments, levels]
         self.set_dirty()  # 在同步数据后，将数据标记为“脏”
 
 
@@ -538,9 +540,10 @@ class IMG_WIN(QWidget):
     def label_and_comment_dialog(self):
         dialog = LabelDialog()
         if dialog.exec_() == QDialog.Accepted:
-            label, comment = dialog.get_values()
+            label, comment, level = dialog.get_values()
             self.current_rect.label = label
             self.current_rect.comment = comment
+            self.current_rect.level = level
             self.current_rect.radio_start = self.ratio
             self.rect_items.append(self.current_rect)
             # 同步更新rectInfo
@@ -574,8 +577,10 @@ class IMG_WIN(QWidget):
             width, height = x_max-x_min, y_max-y_min
             # 如果更新标签信息
             if isUpdateLabel:
-                # print("更新listWidget！")
-                listWidgetItem = QListWidgetItem(f"Label: {item.label}, Comment: {item.comment}, ({width}, {height})")
+                level = getattr(item, "level", "0")
+                listWidgetItem = QListWidgetItem(
+                    f"Label: {item.label}, Level: {level}, Comment: {item.comment}, ({width}, {height})"
+                )
                 listWidgetItem.setFlags(listWidgetItem.flags() | Qt.ItemIsEditable)
                 self.listWidget.addItem(listWidgetItem)
 
@@ -595,12 +600,47 @@ class IMG_WIN(QWidget):
         index = self.listWidget.row(item)
         rect_item = self.rect_items[index]
         text = item.text()
-        if ", Comment: " in text:
-            label, comment = text.split(", Comment: ")
-            label = label.replace("Label: ", "")
-            rect_item.update_info_label(label, comment)
-        else:
-            rect_item.update_info_label(text, "")  # handle case if no comment is provided
+
+        # 兼容旧格式：
+        # 1) "Label: xx, Comment: yy, (w,h)"
+        # 2) "Label: xx, Level: ll, Comment: yy, (w,h)"
+        label = ""
+        comment = ""
+        level = getattr(rect_item, "level", "0")
+
+        try:
+            # 去掉末尾尺寸信息
+            if ", (" in text:
+                text_wo_size = text.split(", (", 1)[0]
+            else:
+                text_wo_size = text
+
+            # 提取 label
+            if text_wo_size.startswith("Label: "):
+                after_label = text_wo_size[len("Label: "):]
+            else:
+                after_label = text_wo_size
+
+            if ", Comment: " in after_label:
+                head, comment = after_label.split(", Comment: ", 1)
+                # head 可能包含 ", Level: "
+                if ", Level: " in head:
+                    label, level = head.split(", Level: ", 1)
+                else:
+                    label = head
+            else:
+                # 没有 comment 的情况
+                if ", Level: " in after_label:
+                    label, level = after_label.split(", Level: ", 1)
+                else:
+                    label = after_label
+        except Exception:
+            # 任何解析失败，至少不让编辑崩掉
+            label = text
+            comment = ""
+
+        rect_item.update_info_label(label.strip(), comment.strip())
+        rect_item.level = level.strip()
 
     def on_rect_selection_changed(self):
         self.updating_selection = True
@@ -733,7 +773,13 @@ class IMG_WIN(QWidget):
         self.rect_items.clear()
 
         # 重新加载标注框
-        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+        # rect_info_raw 兼容旧结构：可能没有 level
+        if len(self.rect_info_raw) >= 7:
+            label, xmin, ymin, xmax, ymax, comment_pose, level = self.rect_info_raw
+        else:
+            label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+            level = ["0"] * len(label)
+
         for index, lbl in enumerate(label):
             current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
                 ymin[index]), float(xmax[index]), float(ymax[index])
@@ -751,9 +797,9 @@ class IMG_WIN(QWidget):
                                        self,
                                        label=lbl,
                                        comment=comment_pose[index],
+                                       level=level[index] if index < len(level) else "0",
                                        parent=self.pixmapItem)  # <-- 关键：设置父项
 
-            # 3. 不需要再调用 self.scene.addItem(rect_item)，因为父项会自动管理子项
             self.rect_items.append(rect_item)
 
         # 更新UI
@@ -812,7 +858,7 @@ class CustomRectItem(QGraphicsRectItem):
     default_pen_color = QColor(Qt.red)
     default_brush_color = QColor(Qt.transparent)
 
-    def __init__(self, rect: QRectF, img_win: 'IMG_WIN', label='', comment='', radio_start=1, parent=None):
+    def __init__(self, rect: QRectF, img_win: 'IMG_WIN', label='', comment='', level='0', radio_start=1, parent=None):
         super().__init__(rect, parent)
         self.pen_width = CustomRectItem.default_pen_width
         self.brush_color = CustomRectItem.default_brush_color
@@ -821,6 +867,7 @@ class CustomRectItem(QGraphicsRectItem):
         self.pixmapItem = self.img_win.get_pixmapItem()
         self.label = label
         self.comment = comment
+        self.level = str(level) if level is not None else '0'
         self._comment = comment  # 私有变量存储实际数据，comment变化时自动更新方框颜色
         self.radio_start = radio_start
         self.setFlags(QGraphicsRectItem.ItemIsSelectable |
@@ -965,12 +1012,15 @@ class CustomRectItem(QGraphicsRectItem):
             error_action = label_menu.addAction(f"读取文件错误: {str(e)}")
             error_action.setEnabled(False)
 
+        # 新增：评级
+        change_level_action = menu.addAction("评级")
+        change_level_action.triggered.connect(lambda: self.change_level())
+
         delete_action = menu.addAction("删除")
         delete_action.triggered.connect(lambda: self.delete_item())
 
         # 显示菜单
         menu.exec_(event.screenPos())
-
 
     def change_color(self):
         color = QColorDialog.getColor()
@@ -1012,7 +1062,12 @@ class CustomRectItem(QGraphicsRectItem):
 
                 # 更新rectInfo，从各个列表中删除对应索引的数据
                 if self.img_win.rect_info_raw:
-                    label, xmin, ymin, xmax, ymax, comment_pose = self.img_win.rect_info_raw
+                    if len(self.img_win.rect_info_raw) >= 7:
+                        label, xmin, ymin, xmax, ymax, comment_pose, level = self.img_win.rect_info_raw
+                    else:
+                        label, xmin, ymin, xmax, ymax, comment_pose = self.img_win.rect_info_raw
+                        level = None
+
                     if index < len(label):
                         label.pop(index)
                         xmin.pop(index)
@@ -1020,8 +1075,14 @@ class CustomRectItem(QGraphicsRectItem):
                         xmax.pop(index)
                         ymax.pop(index)
                         comment_pose.pop(index)
+                        if level is not None and index < len(level):
+                            level.pop(index)
+
                         # 重新保存更新后的rectInfo
-                        self.img_win.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
+                        if level is not None:
+                            self.img_win.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose, level]
+                        else:
+                            self.img_win.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
 
                 # 从scene和rect_items中删除
                 scene.removeItem(self)
@@ -1056,6 +1117,32 @@ class CustomRectItem(QGraphicsRectItem):
         if self.scene():
             self.scene().update()
 
+    def change_level(self):
+        """修改方框的评级(level)"""
+        # 用一个临时 QWidget 来确保对话框是应用级模态且不会被 scene 卡住
+        temp_widget = QWidget()
+        temp_widget.setWindowIcon(QIcon("./Sources/intecast.ico"))
+        temp_widget.setWindowModality(Qt.ApplicationModal)
+        temp_widget.hide()
+
+        current_level = str(getattr(self, "level", "0"))
+        level_text, ok = QInputDialog.getText(
+            temp_widget,
+            "评级",
+            "请输入评级:",
+            QtWidgets.QLineEdit.Normal,
+            current_level,
+        )
+        if ok:
+            self.level = str(level_text).strip() if level_text is not None else ""
+            # 同步到 rect_info_raw，并刷新 UI
+            if hasattr(self, "img_win") and self.img_win is not None:
+                self.img_win.sync_rect_info_from_items()
+                self.img_win.update_rect_items(True)
+            if self.scene():
+                self.scene().update()
+        temp_widget.deleteLater()
+
     # 如果方框item的变化属于位置变化，那么更新方框信息
     def itemChange(self, change, value):
         # 实时响应位置/变换变化
@@ -1080,4 +1167,9 @@ class CustomRectItem(QGraphicsRectItem):
     def set_hovered(self, hovered: bool):
         self.is_hovered = hovered
         self.update()
+
+
+
+
+
 
