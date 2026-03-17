@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1172</width>
+    <width>1897</width>
     <height>917</height>
    </rect>
   </property>
@@ -541,115 +541,6 @@
              </widget>
             </item>
             <item>
-             <spacer name="verticalSpacer_3">
-              <property name="orientation">
-               <enum>Qt::Vertical</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>20</width>
-                <height>5</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_10">
-              <item>
-               <widget class="QLabel" name="input_image_plate_size">
-                <property name="font">
-                 <font>
-                  <family>Times New Roman</family>
-                  <pointsize>10</pointsize>
-                 </font>
-                </property>
-                <property name="frameShape">
-                 <enum>QFrame::NoFrame</enum>
-                </property>
-                <property name="lineWidth">
-                 <number>2</number>
-                </property>
-                <property name="text">
-                 <string>成像板：</string>
-                </property>
-                <property name="margin">
-                 <number>0</number>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QComboBox" name="image_plate_size">
-                <property name="editable">
-                 <bool>true</bool>
-                </property>
-                <property name="currentIndex">
-                 <number>0</number>
-                </property>
-                <property name="insertPolicy">
-                 <enum>QComboBox::NoInsert</enum>
-                </property>
-                <item>
-                 <property name="text">
-                  <string>100</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>200</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="label_plate_unit">
-                <property name="font">
-                 <font>
-                  <family>Times New Roman</family>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="text">
-                 <string>μm</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="label_scale_ratio">
-                <property name="text">
-                 <string>比例：</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLineEdit" name="scale_ratio">
-                <property name="text">
-                 <string>1.0</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="change_scale">
-                <property name="text">
-                 <string>确认</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <spacer name="verticalSpacer_2">
-              <property name="orientation">
-               <enum>Qt::Vertical</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>0</width>
-                <height>10</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item>
              <layout class="QHBoxLayout" name="horizontalLayout">
               <item>
                <widget class="QRadioButton" name="reverseButton">
@@ -989,8 +880,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1172</width>
-     <height>23</height>
+     <width>1897</width>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="config">
@@ -1047,7 +938,6 @@
    <addaction name="pushButton_save_xml"/>
    <addaction name="exclude_pix"/>
    <addaction name="clean_exclude_pix"/>
-   <addaction name="action_measure"/>
   </widget>
   <action name="change_img_savepath">
    <property name="text">
@@ -1132,21 +1022,6 @@
    </property>
    <property name="text">
     <string>保存图片与标注</string>
-   </property>
-  </action>
-  <action name="action_measure">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="icon">
-    <iconset resource="../Sources/sources_lable.qrc">
-     <normaloff>:/新前缀/measure.png</normaloff>:/新前缀/measure.png</iconset>
-   </property>
-   <property name="text">
-    <string>测量模式</string>
-   </property>
-   <property name="toolTip">
-    <string>切换测量模式</string>
    </property>
   </action>
  </widget>

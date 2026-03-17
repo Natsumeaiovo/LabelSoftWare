@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=False):
+def plot_histogram(pixel_array, max_val=65535, window_left=0, window_right=65535, is_reversed=False):
     """
     绘制像素值的灰度直方图并保存为图像
     """
@@ -27,7 +27,7 @@ def plot_histogram(pixel_array, window_left=0, window_right=65535, is_reversed=F
         # 反色时可能需要调整窗口范围
         window_left_adjusted = min(window_left, pixel_array.min())
         window_right_adjusted = max(window_right, pixel_array.max())
-        hist_range = (65535-window_right, 65535-window_left)
+        hist_range = (max_val-window_right, max_val-window_left)
     else:
         hist_range = (window_left, window_right)
 

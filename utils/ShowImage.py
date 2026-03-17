@@ -17,7 +17,7 @@ from PySide2 import QtCore
 from PySide2 import QtGui
 from PySide2 import QtWidgets
 from PySide2.QtCore import Qt, QRectF, QPointF
-from PySide2.QtGui import QPen, QBrush, QColor
+from PySide2.QtGui import QPen, QBrush, QColor, QIcon
 from PySide2.QtGui import Qt
 from PySide2.QtUiTools import QUiLoader
 from PySide2.QtWidgets import QDialog, QListWidget
@@ -27,6 +27,7 @@ from PySide2.QtWidgets import QWidget, QListWidgetItem, QGraphicsPixmapItem
 from utils import FromXML
 from utils.ShowDCMName import ImageNameList
 from widgets.LabelDialog import LabelDialog
+from widgets.CustomRectItem import CustomRectItem, graphics_item_is_valid
 
 
 class IMG_WIN(QWidget):
@@ -90,80 +91,130 @@ class IMG_WIN(QWidget):
         self.auto_exclude_enabled = False
         self.load_exclude_config()  # 初始化时加载配置
 
-    def _merge_boxes(self, boxes, img_width, img_height):
-        """
-        合并重叠或邻近的标注框。仅合并具有相同标签的框。
-        :param boxes: 标注框列表，格式为 [[xmin, ymin, xmax, ymax, label, comment], ...]
-        :param img_width: 图像宽度
-        :param img_height: 图像高度
-        :return: 合并后的标注框列表
-        """
-        if not boxes:
-            return []
+        # =========================
+        # Measure mode (overlay layer)
+        # =========================
+        self.is_measuring = False
+        self._measure_points: List[QPointF] = []  # pixmapItem local coords
+        self._measure_items = []  # QGraphicsItem (line/text)
+        self._rect_item_interaction_state = {}  # id(item) -> (flags, acceptedButtons)
 
-        # 按标签对框进行分组
-        from collections import defaultdict
-        grouped_boxes = defaultdict(list)
-        for box in boxes:
-            label = box[4]
-            grouped_boxes[label].append(box)
+        # 参数：用于 mm 计算。由 MainDcmLabel.change_scale() 同步更新
+        self.image_plate_size_um = 100.0
+        self.scale_ratio = 1.0
 
-        final_merged_boxes = []
-        width_threshold = img_width * 0.05
-        height_threshold = img_height * 0.05
+    def set_measure_scale_params(self, image_plate_size_um: float, scale_ratio: float):
+        """同步测量计算参数（保持低侵入：仅缓存，不触发重绘）。"""
+        try:
+            self.image_plate_size_um = float(image_plate_size_um)
+        except Exception:
+            # 保持旧值
+            pass
+        try:
+            self.scale_ratio = float(scale_ratio)
+        except Exception:
+            pass
 
-        # 对每个分组应用合并逻辑
-        for label, group in grouped_boxes.items():
-            if len(group) < 2:
-                final_merged_boxes.extend(group)
+    def set_measure_mode(self, enabled: bool):
+        """切换测量模式：开启则禁用标注框交互并接管右键；关闭则恢复并清除测量线。"""
+        self.is_measuring = bool(enabled)
+
+        # 清理未完成的点
+        self._measure_points.clear()
+
+        if self.is_measuring:
+            # 和“排除坏点模式”互斥：测量优先（避免右键冲突）
+            if self.is_excluding_pixels:
+                self.set_exclude_mode(False)
+            self.graphicsView.setCursor(Qt.CrossCursor)
+            self._disable_rect_item_interactions()
+        else:
+            self.graphicsView.setCursor(Qt.ArrowCursor)
+            self._restore_rect_item_interactions()
+            self.clear_measurements()
+
+    def clear_measurements(self):
+        """清除场景内所有测量线段与文字。"""
+        self._measure_points.clear()
+        for it in list(self._measure_items):
+            try:
+                if it is not None and it.scene() is not None:
+                    self.scene.removeItem(it)
+            except Exception:
+                pass
+        self._measure_items.clear()
+        self.scene.update()
+
+    def _disable_rect_item_interactions(self):
+        """测量模式下让所有标注框对鼠标不响应"""
+        self._rect_item_interaction_state.clear()
+        for item in self.rect_items:
+            try:
+                self._rect_item_interaction_state[id(item)] = (item.flags(), item.acceptedMouseButtons())
+                item.setFlag(QGraphicsItem.ItemIsMovable, False)
+                item.setFlag(QGraphicsItem.ItemIsSelectable, False)
+                item.setAcceptedMouseButtons(Qt.NoButton)
+            except Exception:
+                pass
+
+    def _restore_rect_item_interactions(self):
+        """恢复测量模式前的标注框交互状态。"""
+        if not self._rect_item_interaction_state:
+            return
+        for item in self.rect_items:
+            state = self._rect_item_interaction_state.get(id(item))
+            if not state:
                 continue
+            flags, accepted = state
+            try:
+                item.setFlags(flags)
+                item.setAcceptedMouseButtons(accepted)
+            except Exception:
+                pass
+        self._rect_item_interaction_state.clear()
 
-            merged_in_group = True
-            while merged_in_group:
-                merged_in_group = False
-                new_group = []
-                used = [False] * len(group)
+    def _add_measurement(self, p1_local: QPointF, p2_local: QPointF):
+        """在 pixmapItem 局部坐标系中添加一条测量线和长度文字。"""
+        if self.pixmapItem is None:
+            return
 
-                for i in range(len(group)):
-                    if used[i]:
-                        continue
+        dx = p2_local.x() - p1_local.x()
+        dy = p2_local.y() - p1_local.y()
+        pixel_len = float((dx * dx + dy * dy) ** 0.5)
 
-                    current_box = list(group[i])
-                    used[i] = True
+        # 线段长度(mm)=线段像素数*image_plate_size_um/1000 * self.scale_ratio
+        try:
+            mm_len = pixel_len * (float(self.image_plate_size_um) / 1000.0) * float(self.scale_ratio)
+        except Exception:
+            mm_len = 0.0
 
-                    for j in range(i + 1, len(group)):
-                        if used[j]:
-                            continue
+        line_item = QtWidgets.QGraphicsLineItem(QtCore.QLineF(p1_local, p2_local), parent=self.pixmapItem)
+        pen = QPen(QColor(0, 255, 0))
+        pen.setWidth(2)
+        line_item.setPen(pen)
+        line_item.setZValue(10_000)
 
-                        other_box = group[j]
+        text_item = QtWidgets.QGraphicsSimpleTextItem(f"{mm_len:.2f} mm", parent=self.pixmapItem)
+        text_item.setBrush(QBrush(QColor(0, 255, 0)))
+        text_item.setZValue(10_001)
 
-                        # 计算水平和垂直间距
-                        h_dist = max(current_box[0], other_box[0]) - min(current_box[2], other_box[2])
-                        v_dist = max(current_box[1], other_box[1]) - min(current_box[3], other_box[3])
+        # 文字统一放在线段末尾（终点 p2）附近
+        end_pt = p2_local
+        dx2 = p2_local.x() - p1_local.x()
+        dy2 = p2_local.y() - p1_local.y()
+        norm = float((dx2 * dx2 + dy2 * dy2) ** 0.5)
+        if norm > 1e-6:
+            # 垂直方向单位向量 ( -dy, dx )
+            nx = -dy2 / norm
+            ny = dx2 / norm
+        else:
+            nx, ny = 1.0, 0.0
 
-                        # 如果框重叠或间距在阈值内，则合并
-                        if h_dist < width_threshold and v_dist < height_threshold:
-                            # 合并框体
-                            current_box[0] = min(current_box[0], other_box[0])
-                            current_box[1] = min(current_box[1], other_box[1])
-                            current_box[2] = max(current_box[2], other_box[2])
-                            current_box[3] = max(current_box[3], other_box[3])
-                            # 合并注释 (这里简单地将它们连接起来)
-                            if other_box[5] and other_box[5] not in current_box[5]:
-                                if current_box[5]:
-                                    current_box[5] += f"_{other_box[5]}"
-                                else:
-                                    current_box[5] = other_box[5]
+        offset = QPointF(nx * 8.0, ny * 8.0) + QPointF(4.0, 4.0)
+        text_item.setPos(end_pt + offset)
 
-                            used[j] = True
-                            merged_in_group = True
-
-                    new_group.append(current_box)
-                group = new_group
-
-            final_merged_boxes.extend(group)
-
-        return final_merged_boxes
+        self._measure_items.extend([line_item, text_item])
+        self.scene.update()
 
     # clear表示是否清空原有的标签框
     def addScenes(self, img, path, clear: bool, merge=False):  # 绘制图形
@@ -190,11 +241,18 @@ class IMG_WIN(QWidget):
         self.pixmap = QtGui.QPixmap.fromImage(q_img)
         # 如果clear为True，清空原有的标签框
         if clear:
+            # scene.clear() 会删除所有 QGraphicsItem（包含 CustomRectItem 的 C++ 对象）。
+            # 先清理 hover 引用，避免后续 mouseMove/leave 还调用到已删除对象。
+            self._clear_hover_state(force=True)
             self.scene.clear()
             self.rect_items.clear()
             self.listWidget.clear()
             self.pixmapItem = self.scene.addPixmap(self.pixmap)  # 添加图元
             self.sync_rect_info_from_items()  # 同步更新rectInfo
+
+            # 切换图片时：测量线也应一起清掉（避免残留）
+            self.clear_measurements()
+
         else:
             for item in self.scene.items():
                 # 检查每个项是否为 QGraphicsPixmapItem
@@ -217,7 +275,7 @@ class IMG_WIN(QWidget):
                 analysis_result = FromXML.analysis_xml(path=path_xml, return_size=True)
                 if not analysis_result:
                     return
-                label, xmin, ymin, xmax, ymax, comment_pose, size = analysis_result
+                label, xmin, ymin, xmax, ymax, comment_pose, level, size = analysis_result
                 img_width, img_height = size
 
                 if not all([label, xmin, ymin, xmax, ymax]):
@@ -228,7 +286,7 @@ class IMG_WIN(QWidget):
                 for i in range(len(label)):
                     boxes.append([
                         float(xmin[i]), float(ymin[i]), float(xmax[i]), float(ymax[i]),
-                        label[i], comment_pose[i]
+                        label[i], comment_pose[i], level[i]
                     ])
 
                 # 如果merge为True，执行合并逻辑
@@ -241,8 +299,9 @@ class IMG_WIN(QWidget):
                     xmax = [str(b[2]) for b in boxes]
                     ymax = [str(b[3]) for b in boxes]
                     comment_pose = [b[5] for b in boxes]
+                    level = [str(b[6]) for b in boxes]
 
-                self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
+                self.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose, level]
                 print(label, xmin, ymin, xmax, ymax)
 
                 for index, lbl in enumerate(label):
@@ -257,12 +316,13 @@ class IMG_WIN(QWidget):
                     rect_in_pixmap = QRectF(QPointF(current_xmin, current_ymin),
                                             QPointF(current_xmax, current_ymax))
                     self.current_rect = CustomRectItem(rect_in_pixmap, self,
-                                                       label=lbl, comment=comment_pose[index],
+                                                       label=lbl, comment=comment_pose[index], level=level[index],
                                                        parent=self.pixmapItem)  # 设置父项
                     # self.scene.addItem(self.current_rect) # 不再需要，因为父项已在场景中
 
                     self.current_rect.label = lbl
                     self.current_rect.comment = comment_pose[index]
+                    self.current_rect.level = level[index]
                     self.current_rect.radio_start = self.ratio
                     self.rect_items.append(self.current_rect)
                     self.update_rect_items(True)
@@ -276,6 +336,7 @@ class IMG_WIN(QWidget):
         xmaxs = []
         ymaxs = []
         comments = []
+        levels = []
 
         for item in self.rect_items:
             # item.rect() 直接返回相对于父项(pixmapItem)的坐标，这正是我们需要的原始坐标
@@ -291,10 +352,9 @@ class IMG_WIN(QWidget):
             xmaxs.append(str(x_max))
             ymaxs.append(str(y_max))
             comments.append(item.comment)
+            levels.append(str(getattr(item, "level", "0")))
 
-
-
-        self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments]
+        self.rect_info_raw = [labels, xmins, ymins, xmaxs, ymaxs, comments, levels]
         self.set_dirty()  # 在同步数据后，将数据标记为“脏”
 
 
@@ -303,6 +363,27 @@ class IMG_WIN(QWidget):
         self.is_dirty = dirty
 
     def scene_MousePressEvent(self, event):
+        # 测量模式：右键接管测量；左键允许拖动图片
+        if self.is_measuring:
+            if event.buttons() & QtCore.Qt.LeftButton:
+                # 复用原逻辑：记录拖动起点
+                self.preMousePosition = event.scenePos()
+                event.accept()
+                return
+
+            if event.button() == Qt.RightButton and self.pixmapItem is not None:
+                p_local = self.pixmapItem.mapFromScene(event.scenePos())
+                self._measure_points.append(p_local)
+                if len(self._measure_points) == 2:
+                    p1, p2 = self._measure_points
+                    self._add_measurement(p1, p2)
+                    self._measure_points.clear()
+                event.accept()
+                return
+
+            event.ignore()
+            return
+
         # 处理中键点击 - 直接传递给下层项目
         if event.button() == Qt.MiddleButton:
             if self.is_merge:
@@ -350,6 +431,13 @@ class IMG_WIN(QWidget):
                 # self.scene.addItem(self.current_rect) # 不再需要
 
     def scene_mouseReleaseEvent(self, event):
+        if self.is_measuring:
+            # 测量模式下：放行左键拖动的释放；右键不进入原右键画框/移动/resize流程
+            if event.button() in (Qt.LeftButton, Qt.RightButton):
+                event.accept()
+                return
+            event.ignore()
+            return
         # if event.button() == Qt.LeftButton:
         if event.button() == Qt.RightButton:
             if self.drawing:
@@ -398,6 +486,18 @@ class IMG_WIN(QWidget):
         # super(QtWidgets.QGraphicsScene, self).mouseReleaseEvent(event)
 
     def scene_mouseMoveEvent(self, event):
+        if self.is_measuring:
+            # 测量模式：允许左键拖动图片
+            if event.buttons() & QtCore.Qt.LeftButton and self.pixmapItem is not None:
+                # 与原左键拖动逻辑一致
+                self.MouseMove = event.scenePos() - self.preMousePosition
+                self.preMousePosition = event.scenePos()
+                self.pixmapItem.setPos(self.pixmapItem.pos() + self.MouseMove)
+                event.accept()
+                return
+
+            event.ignore()
+            return
         if self.resizing and self.resizing_rect:
             # 如果是在 resizing 方框
             # 1. 获取鼠标在场景中的当前位置
@@ -480,7 +580,6 @@ class IMG_WIN(QWidget):
         if self.ratio == old_ratio:
             return
 
-        # --- 核心修改开始 ---
         # 由于 CustomRectItem 是 pixmapItem 的子项，我们只需要缩放和移动 pixmapItem 即可。
         # 子项会自动继承父项的变换（缩放和移动）。
 
@@ -538,9 +637,10 @@ class IMG_WIN(QWidget):
     def label_and_comment_dialog(self):
         dialog = LabelDialog()
         if dialog.exec_() == QDialog.Accepted:
-            label, comment = dialog.get_values()
+            label, comment, level = dialog.get_values()
             self.current_rect.label = label
             self.current_rect.comment = comment
+            self.current_rect.level = level
             self.current_rect.radio_start = self.ratio
             self.rect_items.append(self.current_rect)
             # 同步更新rectInfo
@@ -574,8 +674,10 @@ class IMG_WIN(QWidget):
             width, height = x_max-x_min, y_max-y_min
             # 如果更新标签信息
             if isUpdateLabel:
-                # print("更新listWidget！")
-                listWidgetItem = QListWidgetItem(f"Label: {item.label}, Comment: {item.comment}, ({width}, {height})")
+                level = getattr(item, "level", "0")
+                listWidgetItem = QListWidgetItem(
+                    f"Label: {item.label}, Level: {level}, Comment: {item.comment}, ({width}, {height})"
+                )
                 listWidgetItem.setFlags(listWidgetItem.flags() | Qt.ItemIsEditable)
                 self.listWidget.addItem(listWidgetItem)
 
@@ -595,12 +697,47 @@ class IMG_WIN(QWidget):
         index = self.listWidget.row(item)
         rect_item = self.rect_items[index]
         text = item.text()
-        if ", Comment: " in text:
-            label, comment = text.split(", Comment: ")
-            label = label.replace("Label: ", "")
-            rect_item.update_info_label(label, comment)
-        else:
-            rect_item.update_info_label(text, "")  # handle case if no comment is provided
+
+        # 兼容旧格式：
+        # 1) "Label: xx, Comment: yy, (w,h)"
+        # 2) "Label: xx, Level: ll, Comment: yy, (w,h)"
+        label = ""
+        comment = ""
+        level = getattr(rect_item, "level", "0")
+
+        try:
+            # 去掉末尾尺寸信息
+            if ", (" in text:
+                text_wo_size = text.split(", (", 1)[0]
+            else:
+                text_wo_size = text
+
+            # 提取 label
+            if text_wo_size.startswith("Label: "):
+                after_label = text_wo_size[len("Label: "):]
+            else:
+                after_label = text_wo_size
+
+            if ", Comment: " in after_label:
+                head, comment = after_label.split(", Comment: ", 1)
+                # head 可能包含 ", Level: "
+                if ", Level: " in head:
+                    label, level = head.split(", Level: ", 1)
+                else:
+                    label = head
+            else:
+                # 没有 comment 的情况
+                if ", Level: " in after_label:
+                    label, level = after_label.split(", Level: ", 1)
+                else:
+                    label = after_label
+        except Exception:
+            # 任何解析失败，至少不让编辑崩掉
+            label = text
+            comment = ""
+
+        rect_item.update_info_label(label.strip(), comment.strip())
+        rect_item.level = level.strip()
 
     def on_rect_selection_changed(self):
         self.updating_selection = True
@@ -720,9 +857,14 @@ class IMG_WIN(QWidget):
         self.refresh_annotations()
 
     def refresh_annotations(self):
-        """根据当前的排除设置，刷新所有标注框的可见性"""
+        """
+        根据当前的排除设置，刷新所有标注框的可见性
+        """
         if not self.rect_info_raw or self.pixmapItem is None:
             return
+
+        # 任何重建/移除都会让旧 hovered_rect 变成悬空引用
+        self._clear_hover_state(force=True)
 
         # 移除所有现有标注框
         for item in self.rect_items:
@@ -733,7 +875,13 @@ class IMG_WIN(QWidget):
         self.rect_items.clear()
 
         # 重新加载标注框
-        label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+        # rect_info_raw 兼容旧结构：可能没有 level
+        if len(self.rect_info_raw) >= 7:
+            label, xmin, ymin, xmax, ymax, comment_pose, level = self.rect_info_raw
+        else:
+            label, xmin, ymin, xmax, ymax, comment_pose = self.rect_info_raw
+            level = ["0"] * len(label)
+
         for index, lbl in enumerate(label):
             current_xmin, current_ymin, current_xmax, current_ymax = float(xmin[index]), float(
                 ymin[index]), float(xmax[index]), float(ymax[index])
@@ -751,9 +899,9 @@ class IMG_WIN(QWidget):
                                        self,
                                        label=lbl,
                                        comment=comment_pose[index],
+                                       level=level[index] if index < len(level) else "0",
                                        parent=self.pixmapItem)  # <-- 关键：设置父项
 
-            # 3. 不需要再调用 self.scene.addItem(rect_item)，因为父项会自动管理子项
             self.rect_items.append(rect_item)
 
         # 更新UI
@@ -772,6 +920,7 @@ class IMG_WIN(QWidget):
                 self._clear_hover_state()
             elif event.type() == QtCore.QEvent.KeyPress and event.key() == Qt.Key_Delete:
                 if self.hovered_rect and not self.is_merge:
+                    # delete_item 内会处理 hovered_rect 清理
                     self.hovered_rect.delete_item()
                     self.hovered_rect = None
                     return True
@@ -781,17 +930,37 @@ class IMG_WIN(QWidget):
         scene_pos = self.graphicsView.mapToScene(event.pos())
         item = self.scene.itemAt(scene_pos, QtGui.QTransform())
         if isinstance(item, CustomRectItem):
+            # itemAt 返回的 item 一定是当前 scene 中的有效 item
             if item is not self.hovered_rect:
-                if self.hovered_rect:
-                    self.hovered_rect.set_hovered(False)
+                if self.hovered_rect and graphics_item_is_valid(self.hovered_rect):
+                    try:
+                        self.hovered_rect.set_hovered(False)
+                    except RuntimeError:
+                        # 已被删除，直接断引用
+                        pass
                 self.hovered_rect = item
-                self.hovered_rect.set_hovered(True)
+                try:
+                    self.hovered_rect.set_hovered(True)
+                except RuntimeError:
+                    self.hovered_rect = None
         else:
             self._clear_hover_state()
 
-    def _clear_hover_state(self):
+    def _clear_hover_state(self, force: bool = False):
+        """Clear hovered state safely.
+
+        force=True: 不管当前是否在 drawing/moving/resizing，也强制断开引用。
+        """
+        if not force and (self.drawing or self.moving or self.resizing):
+            # 正在交互时不做额外操作
+            pass
         if self.hovered_rect:
-            self.hovered_rect.set_hovered(False)
+            if graphics_item_is_valid(self.hovered_rect):
+                try:
+                    self.hovered_rect.set_hovered(False)
+                except RuntimeError:
+                    # wrapper 已悬空
+                    pass
             self.hovered_rect = None
 
     def _set_hover_rect(self, rect_item: Optional['CustomRectItem']):
@@ -800,284 +969,96 @@ class IMG_WIN(QWidget):
             return
         if rect_item is self.hovered_rect:
             return
+        if self.hovered_rect and graphics_item_is_valid(self.hovered_rect):
+            try:
+                self.hovered_rect.set_hovered(False)
+            except RuntimeError:
+                pass
+        self.hovered_rect = rect_item if graphics_item_is_valid(rect_item) else None
         if self.hovered_rect:
-            self.hovered_rect.set_hovered(False)
-        self.hovered_rect = rect_item
-        if self.hovered_rect:
-            self.hovered_rect.set_hovered(True)
+            try:
+                self.hovered_rect.set_hovered(True)
+            except RuntimeError:
+                self.hovered_rect = None
 
+    def _merge_boxes(self, boxes, img_width, img_height):
+        """合并重叠或邻近的标注框（仅合并相同 label）。
 
-class CustomRectItem(QGraphicsRectItem):
-    default_pen_width = 1
-    default_pen_color = QColor(Qt.red)
-    default_brush_color = QColor(Qt.transparent)
+        boxes: [[xmin, ymin, xmax, ymax, label, comment, level], ...] 或 comment/level 可能缺省。
+        返回同结构列表。
+        """
+        if not boxes:
+            return []
 
-    def __init__(self, rect: QRectF, img_win: 'IMG_WIN', label='', comment='', radio_start=1, parent=None):
-        super().__init__(rect, parent)
-        self.pen_width = CustomRectItem.default_pen_width
-        self.brush_color = CustomRectItem.default_brush_color
-        self.pen_color = QColor(Qt.red)
-        self.img_win = img_win
-        self.pixmapItem = self.img_win.get_pixmapItem()
-        self.label = label
-        self.comment = comment
-        self._comment = comment  # 私有变量存储实际数据，comment变化时自动更新方框颜色
-        self.radio_start = radio_start
-        self.setFlags(QGraphicsRectItem.ItemIsSelectable |
-                      QGraphicsRectItem.ItemIsMovable |
-                      QGraphicsRectItem.ItemIsFocusable |
-                      QGraphicsRectItem.ItemSendsGeometryChanges)
-        self.setAcceptHoverEvents(True)
-        self.setFlag(QGraphicsItem.ItemIsSelectable, True)
-        self.set_pen_color_from_comment()   # 根据 comment 设置笔的颜色
+        from collections import defaultdict
 
-        self.pen = QPen(self.pen_color, self.pen_width)
-        self.brush = QBrush(self.brush_color)
+        grouped_boxes = defaultdict(list)
+        for box in boxes:
+            # label 在索引 4
+            if len(box) < 5:
+                continue
+            grouped_boxes[box[4]].append(box)
 
-        self.setPen(self.pen)
-        self.setBrush(self.brush)
+        final_merged_boxes = []
+        width_threshold = img_width * 0.05
+        height_threshold = img_height * 0.05
 
-        # 为调整大小操作初始化属性
-        self.initial_mouse_pos = QPointF()
-        self.initial_rect = QRectF()
-        self.initial_pos = QPointF()  # 为拖动操作初始化位置属性
+        for label, group in grouped_boxes.items():
+            if len(group) < 2:
+                final_merged_boxes.extend(group)
+                continue
 
-        # 启用实时几何变化通知
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+            merged_in_group = True
+            while merged_in_group:
+                merged_in_group = False
+                new_group = []
+                used = [False] * len(group)
 
-        self.is_hovered = False
-        self.hover_pen = QPen(QColor(Qt.white), max(self.pen_width + 1, 2))
+                for i in range(len(group)):
+                    if used[i]:
+                        continue
 
+                    current_box = list(group[i])
+                    used[i] = True
 
-    @property
-    def comment(self):
-        return self._comment
+                    for j in range(i + 1, len(group)):
+                        if used[j]:
+                            continue
 
-    @comment.setter
-    def comment(self, value):
-        """当comment被修改时自动调用该方法更新颜色"""
-        self._comment = value
-        self.set_pen_color_from_comment()
+                        other_box = group[j]
 
-    def set_pen_color_from_comment(self):
-        """根据comment_pose设置方框的颜色"""
-        if self._comment == '自动检测':
-            self.default_pen_color = QColor(Qt.blue)
-            self.pen_color = QColor(Qt.blue)  # 自动检测设置为蓝色
-        else:
-            self.default_pen_color = QColor(Qt.red)
-            self.pen_color = QColor(Qt.red)  # 其他情况设置为红色
+                        # 计算水平和垂直间距
+                        h_dist = max(float(current_box[0]), float(other_box[0])) - min(float(current_box[2]), float(other_box[2]))
+                        v_dist = max(float(current_box[1]), float(other_box[1])) - min(float(current_box[3]), float(other_box[3]))
 
-        # 更新笔设置
-        self.pen = QPen(self.pen_color, self.pen_width)
-        self.setPen(self.pen)
-        # 强制更新视图
-        if self.scene():
-            self.scene().update()
+                        # 框重叠或间距在阈值内则合并
+                        if h_dist < width_threshold and v_dist < height_threshold:
+                            current_box[0] = min(float(current_box[0]), float(other_box[0]))
+                            current_box[1] = min(float(current_box[1]), float(other_box[1]))
+                            current_box[2] = max(float(current_box[2]), float(other_box[2]))
+                            current_box[3] = max(float(current_box[3]), float(other_box[3]))
 
+                            # 合并注释（索引 5）
+                            try:
+                                if len(other_box) > 5 and other_box[5] and (len(current_box) <= 5 or other_box[5] not in current_box[5]):
+                                    if len(current_box) <= 5 or not current_box[5]:
+                                        # 确保 current_box 至少有 comment 位
+                                        while len(current_box) <= 5:
+                                            current_box.append("")
+                                        current_box[5] = other_box[5]
+                                    else:
+                                        current_box[5] = f"{current_box[5]}_{other_box[5]}"
+                            except Exception:
+                                pass
 
-    def paint(self, painter, option, widget):
-        if self.is_hovered:
-            painter.setPen(self.hover_pen)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRect(self.rect())
-        super().paint(painter, option, widget)
-        painter.setPen(self.default_pen_color)
-        font = painter.font()
-        font.setFamily("Microsoft YaHei")
-        font.setPointSize(6)
-        painter.setFont(font)
-        # 构建要显示的文本
-        display_text = self.label
+                            used[j] = True
+                            merged_in_group = True
 
-        # 实时计算宽高信息
-        # top_left = self.mapToScene(self.rect().topLeft())
-        # bottom_right = self.mapToScene(self.rect().bottomRight())
+                    new_group.append(current_box)
 
-        # x_min = int(self.pixmapItem.mapFromScene(top_left).x())
-        # y_min = int(self.pixmapItem.mapFromScene(top_left).y())
-        # x_max = int(self.pixmapItem.mapFromScene(bottom_right).x())
-        # y_max = int(self.pixmapItem.mapFromScene(bottom_right).y())
+                group = new_group
 
-        # width = abs(x_max - x_min)
-        # height = abs(y_max - y_min)
-        # display_text += f" (w, h)=({width},{height})"
+            final_merged_boxes.extend(group)
 
-        # 绘制文本，位置在框的左上角上方
-        text_position = self.rect().topLeft() + QPointF(0, -5)  # 调整位置偏移
-        painter.drawText(text_position, display_text)
-        # self.update_info(True)    # 会导致循环调用
-
-    def hoverMoveEvent(self, event):
-        cursor = self.get_cursor_shape(event.pos())
-        self.setCursor(cursor)
-
-    def get_cursor_shape(self, pos):
-        # 转换坐标到局部坐标系
-        local_pos = self.mapFromScene(pos)
-        rect = self.rect()
-        margin = 5  # 边界的宽度，可以根据需要调整
-
-        # 检查鼠标是否在右下角
-        if abs(local_pos.x() - rect.right()) <= margin and abs(local_pos.y() - rect.bottom()) <= margin:
-            return Qt.SizeFDiagCursor  # 斜向箭头，适合右下角调整
-
-        # 检查是否在边线上
-        # if abs(local_pos.x() - rect.left()) <= margin or abs(local_pos.x() - rect.right()) <= margin:
-        if abs(local_pos.x() - rect.right()) <= margin:
-            return Qt.SizeHorCursor
-        elif abs(local_pos.y() - rect.bottom()) <= margin:
-            return Qt.SizeVerCursor
-
-        # 检查是否在内部
-        if rect.contains(local_pos):
-            return Qt.SizeAllCursor
-
-        return Qt.ArrowCursor
-
-    def showCustomMenu(self, event):
-        """中键菜单栏"""
-        menu = QMenu()
-
-        change_color_action = menu.addAction("改变颜色")
-        change_color_action.triggered.connect(lambda: self.change_color())
-
-        change_width_action = menu.addAction("改变线宽")
-        change_width_action.triggered.connect(lambda: self.change_line_width())
-
-        change_to_manual = menu.addAction("修改为人工标注")
-        change_to_manual.triggered.connect(lambda: self.change_to_manual())
-
-        # change_to_auto = menu.addAction("修改为机器标注")
-        # change_to_auto.triggered.connect(lambda: self.change_to_auto())
-
-        # 定义标签菜单
-        label_menu = menu.addMenu("修改标签")
-        try:
-            with open("./Sources/label_info.txt", "r", encoding="utf-8") as file:
-                labels = file.read().splitlines()
-
-            for label in labels:
-                if label.strip():
-                    label_action = label_menu.addAction(label)
-                    label_action.triggered.connect(lambda checked=False, lbl=label: self.change_label(lbl))
-        except Exception as e:
-            error_action = label_menu.addAction(f"读取文件错误: {str(e)}")
-            error_action.setEnabled(False)
-
-        delete_action = menu.addAction("删除")
-        delete_action.triggered.connect(lambda: self.delete_item())
-
-        # 显示菜单
-        menu.exec_(event.screenPos())
-
-
-    def change_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.update_style(pen_color=color)
-            CustomRectItem.default_pen_color = color
-
-    def change_line_width(self):
-        # 创建一个临时的 QWidget 用于显示对话框
-        temp_widget = QWidget()
-        temp_widget.setWindowModality(Qt.ApplicationModal)
-        temp_widget.hide()  # 隐藏窗口，因为我们只关心对话框
-
-        # 获取新的线宽
-        width, ok = QInputDialog.getInt(temp_widget, "Line Width", "Enter new line width:", self.pen_width, 1, 10)
-        if ok:
-            self.update_style(pen_width=width)
-            CustomRectItem.default_pen_width = width
-
-        temp_widget.deleteLater()  # 清理临时窗口
-
-    def update_style(self, pen_width=None, pen_color=None, brush_color=None):
-        if pen_width is not None:
-            self.pen_width = pen_width
-        if pen_color is not None:
-            self.pen_color = pen_color
-        if brush_color is not None:
-            self.brush_color = brush_color
-
-        self.setPen(QPen(self.pen_color, self.pen_width))
-        self.setBrush(QBrush(self.brush_color))
-
-    def delete_item(self):
-        scene = self.scene()
-        if scene is not None:
-            # 查找当前项在rect_items中的索引
-            if self in self.img_win.rect_items:
-                index = self.img_win.rect_items.index(self)
-
-                # 更新rectInfo，从各个列表中删除对应索引的数据
-                if self.img_win.rect_info_raw:
-                    label, xmin, ymin, xmax, ymax, comment_pose = self.img_win.rect_info_raw
-                    if index < len(label):
-                        label.pop(index)
-                        xmin.pop(index)
-                        ymin.pop(index)
-                        xmax.pop(index)
-                        ymax.pop(index)
-                        comment_pose.pop(index)
-                        # 重新保存更新后的rectInfo
-                        self.img_win.rect_info_raw = [label, xmin, ymin, xmax, ymax, comment_pose]
-
-                # 从scene和rect_items中删除
-                scene.removeItem(self)
-                self.img_win.rect_items.remove(self)
-                self.img_win.update_rect_items(True)
-                self.img_win.set_dirty()  # 删除后设置脏标记
-                scene.update()
-
-    def change_to_manual(self):
-        """修改为人工标注"""
-        self.comment = "None"
-        # 修改 listWidget_label中对应的项
-        if self in self.img_win.rect_items:
-            self.img_win.update_rect_items(True)
-            self.img_win.sync_rect_info_from_items()
-
-    def change_to_auto(self):
-        """修改为自动检测"""
-        self.comment = "自动检测"
-        if self in self.img_win.rect_items:
-            self.img_win.update_rect_items(True)
-            self.img_win.sync_rect_info_from_items()
-
-    def change_label(self, new_label):
-        """修改方框的标签"""
-        self.label = new_label
-        # 更新列表显示
-        if self in self.img_win.rect_items:
-            self.img_win.update_rect_items(True)
-            self.img_win.sync_rect_info_from_items()
-        # 强制场景更新以显示新标签
-        if self.scene():
-            self.scene().update()
-
-    # 如果方框item的变化属于位置变化，那么更新方框信息
-    def itemChange(self, change, value):
-        # 实时响应位置/变换变化
-        if change in (QGraphicsItem.ItemPositionChange,  # 位置即将改变
-                      QGraphicsItem.ItemTransformChange,  # 变换即将改变
-                      QGraphicsItem.ItemPositionHasChanged,  # 位置已改变（确保全覆盖）
-                      QGraphicsItem.ItemTransformHasChanged):  # 变换已改变
-            self.update_info(True)  # 传递实时更新标志
-            self.scene().update()  # 强制场景立即更新
-        return super().itemChange(change, value)
-
-    # 更新方框信息
-    def update_info(self, isUpdateLabel: bool):
-        # self.scene().parent().update_rect_items(isUpdateLabel)
-        self.img_win.update_rect_items(isUpdateLabel)
-        self.update()
-
-    def update_info_label(self, label, comment):
-        self.label = label
-        self.comment = comment
-
-    def set_hovered(self, hovered: bool):
-        self.is_hovered = hovered
-        self.update()
+        return final_merged_boxes
 

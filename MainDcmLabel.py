@@ -6,17 +6,22 @@ Author : Hou Mingjun
 Email : houmingjun21@163.cpm
 File : MainDcmLabel.py
 Lab: Information Group of InteCast Software Center
-Function of the program: 
+Function of the program:
 """
 
 import json
 import os
+import sys
+import hashlib
+import hmac
 import xml.etree.ElementTree as ET
 import xml.dom.minidom as minidom
 import json
+from datetime import datetime
 import pydicom
 from openpyxl.styles.builtins import output
 from PIL import Image, ImageDraw, ImageFont
+import tkinter as tk
 
 
 from utils import FromXML
@@ -28,6 +33,7 @@ from PySide2.QtUiTools import QUiLoader
 from PySide2.QtWidgets import QApplication, QMainWindow, QListWidget
 from PySide2.QtWidgets import QFileDialog
 from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QInputDialog, QLineEdit
 
 from utils import DrawHist
 from utils import EnhanceImage
@@ -42,6 +48,7 @@ from utils.QSSLoader import QSSLoader
 from utils.ShowImage import IMG_WIN
 from widgets.EditWindow import EditWindow
 from Sources import sources_lable
+
 
 # 保存图片临时信息（窗宽、窗位、是否反色）
 def save_img_tmp_info(image_path, window_width, window_level, reverse_checked):
@@ -185,7 +192,6 @@ class Worker(QObject):
 class GUI(QMainWindow):
     def __init__(self):
         super().__init__()
-
         self.thread = None
         self.worker = None
 
@@ -206,6 +212,8 @@ class GUI(QMainWindow):
         self.img_win: IMG_WIN = ShowImage.IMG_WIN(self.ui, self.image_name_list)  # 实例化IMG_WIN类
         # self.graphics_view_layout.addWidget(self.graphic)
         # self.graphics_view_layout.addWidget(self.graphic)
+        self.image_plate_size_um = 100
+        self.scale_ratio = 1.0
 
         self.ui.pushButton.triggered.connect(self.select_img)
         self.ui.pushButton_save_xml.triggered.connect(self.save_xml)
@@ -282,6 +290,14 @@ class GUI(QMainWindow):
         self.ui.change_report_savepath.triggered.connect(
             lambda: self.select_and_save_path('report_save_path', "选择报告保存位置")
         )
+
+        # 比例尺/成像板大小设置
+        self.ui.change_scale.clicked.connect(self.change_scale)
+
+        # 测量模式（checkable QAction）
+        # 说明：toggled 会在选中/取消选中时都触发，正好匹配“进入/退出测量模式”的需求
+        self.ui.action_measure.toggled.connect(self.img_win.set_measure_mode)
+
         self.load_config()
 
     def load_config(self):
@@ -479,7 +495,7 @@ class GUI(QMainWindow):
 
         # 如果没有反色，那么在这里绘制histogram
         if self.ui.reverseButton.isChecked() is not True:
-            DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
+            DrawHist.plot_histogram(self.img, max_val, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
 
@@ -571,7 +587,7 @@ class GUI(QMainWindow):
                 # 如果切换了照片，那么需要对self.img进行反色
                 if is_item_changed:
                     self.img = max_val - self.img
-            DrawHist.plot_histogram(self.img, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
+            DrawHist.plot_histogram(self.img, max_val, self.window_left, self.window_right, self.ui.reverseButton.isChecked())
             pixmap = QtGui.QPixmap('histogram.png')
             self.ui.histogram.setPixmap(pixmap)
 
@@ -1228,6 +1244,43 @@ class GUI(QMainWindow):
 
         # 2. 设置 IMG_WIN 进入排除模式
         self.img_win.set_exclude_mode(True)
+
+    def change_scale(self):
+        """读取界面“成像板大小(μm)”与“比例系数”，并保存为实例属性。
+
+        约定：
+        - 成像板大小：单位 μm，可输入整数/小数
+        - 比例系数：可输入整数/小数，默认 1.0
+        """
+        # QComboBox 可编辑时以 currentText() 获取编辑框内容
+        plate_text = (self.ui.image_plate_size.currentText() or "").strip()
+        ratio_text = (self.ui.scale_ratio.text() or "").strip()
+
+        # 容错：空值时使用默认
+        if not ratio_text:
+            ratio_text = "1.0"
+            self.ui.scale_ratio.setText(ratio_text)
+
+        try:
+            image_plate_size_um = float(plate_text)
+            scale_ratio = float(ratio_text)
+        except ValueError:
+            # 输入不合法时不更新属性，保持原值
+            QMessageBox.warning(self.ui, "输入错误", "请输入合法数字（仅数字和小数点）。")
+
+        # 基本范围校验
+        if image_plate_size_um <= 0 or scale_ratio <= 0:
+            QMessageBox.warning(self.ui, "输入错误", "成像板大小与比例系数必须大于 0。")
+
+        # 保存为 GUI 实例属性，供后续比例尺绘制/计算使用
+        self.image_plate_size_um = image_plate_size_um
+        self.scale_ratio = scale_ratio
+
+        # 同步给 IMG_WIN，用于测量长度计算
+        self.img_win.set_measure_scale_params(image_plate_size_um=self.image_plate_size_um, scale_ratio=self.scale_ratio)
+
+        # 如有其他组件需要同步，可在此处触发刷新（保持低风险：不强制调用）
+        # 例如：self.show_img() 或 self.img_win.update_scale(...)
 
 
 if __name__ == '__main__':

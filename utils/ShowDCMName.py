@@ -85,7 +85,6 @@ class ImageNameList(QMainWindow):
             # 查找所有object标签
             objects_len = len(root.findall('.//object'))
             if self.auto_exclude_pix.isChecked():
-                print("ppdfklfdlfkdsfdfd")
                 config_file_path = "Sources/config.json"
                 objects_to_exclude = self.process_xml_with_exclude(xml_file_path, config_file_path, xml_file_path)
                 objects_len = objects_len - objects_to_exclude

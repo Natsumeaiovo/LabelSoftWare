@@ -14,8 +14,6 @@ import xml.etree.ElementTree as ET
 
 # utils/FromXML.py
 
-import xml.etree.ElementTree as ET
-
 
 def analysis_xml(path, return_size=False):
     # 解析XML文件
@@ -23,6 +21,7 @@ def analysis_xml(path, return_size=False):
     root = tree.getroot()
     label = []
     comment_pose = []
+    level = []
     xmin = []
     ymin = []
     xmax = []
@@ -30,8 +29,19 @@ def analysis_xml(path, return_size=False):
 
     # 提取所有对象（标注框）的信息
     for obj in root.findall('.//object'):
-        label.append(obj.find('name').text)
-        comment_pose.append(obj.find("pose").text)
+        name_node = obj.find('name')
+        pose_node = obj.find('pose')
+        level_node = obj.find('level')
+
+        label.append(name_node.text if name_node is not None else "")
+        comment_pose.append(pose_node.text if pose_node is not None else "")
+
+        # 兼容旧 XML：没有 level 时使用默认值 0
+        if level_node is None or level_node.text is None or str(level_node.text).strip() == "":
+            level.append("0")
+        else:
+            level.append(str(level_node.text).strip())
+
         bndbox = obj.find('bndbox')
         if bndbox:
             xmin.append(bndbox.find('xmin').text)
@@ -44,10 +54,9 @@ def analysis_xml(path, return_size=False):
         if size_tag is not None:
             width = int(size_tag.find('width').text)
             height = int(size_tag.find('height').text)
-            return label, xmin, ymin, xmax, ymax, comment_pose, (width, height)
+            return label, xmin, ymin, xmax, ymax, comment_pose, level, (width, height)
         else:
             # 如果没有size标签，返回None
-            return label, xmin, ymin, xmax, ymax, comment_pose, None
+            return label, xmin, ymin, xmax, ymax, comment_pose, level, None
     else:
-        return label, xmin, ymin, xmax, ymax, comment_pose
-
+        return label, xmin, ymin, xmax, ymax, comment_pose, level
